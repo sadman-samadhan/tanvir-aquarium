@@ -12,7 +12,7 @@ import AdminSidebar from '@/components/AdminSidebar'
 import { 
   BarChart3, ShoppingBag, Package, LogOut, Settings, Save, 
   Check, AlertCircle, RefreshCw, Upload, Sparkles, Truck, 
-  CreditCard, Palette, Layout, ExternalLink, Layers, Info, MapPin, Phone, Mail, MessageSquare
+  CreditCard, Palette, Layout, ExternalLink, Layers, Info, MapPin, Phone, Mail, MessageSquare, Eye
 } from 'lucide-react'
 import axios from 'axios'
 
@@ -380,171 +380,320 @@ export default function AdminSettingsClient({ initialSettings }: AdminSettingsCl
 
           {/* TAB: COLLECTIONS & SHOWCASE (Featured, Best Seller, Trending) */}
           {activeTab === 'collections' && (
-            <div className="bg-white rounded-b-lg border border-t-0 border-slate-200 p-6 space-y-8 shadow-sm">
-              <div className="max-w-2xl space-y-6">
+            <div className="bg-white rounded-b-lg border border-t-0 border-slate-200 p-4 sm:p-6 shadow-sm">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
                 
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900">Featured, Best Seller & Trending Collections</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Control how the three core showcase collections are displayed across your store navbar, home page rows, and automated calculation rules.
-                  </p>
+                {/* LEFT COLUMN: TOGGLES & AUTOMATION RULES */}
+                <div className="lg:col-span-7 space-y-6">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">Featured, Best Seller & Trending Collections</h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Control how the three core showcase collections are displayed across your store navbar, home page rows, and automated calculation rules.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    
+                    {/* COLLECTION 1: FEATURED */}
+                    <div className={`rounded-xl border p-4 space-y-3 transition-all ${
+                      settings.show_featured ? 'border-amber-200 bg-amber-50/20' : 'border-slate-200 bg-slate-50/50 opacity-80'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                            <Sparkles className="h-4 w-4 text-amber-500" /> Featured Collection
+                          </span>
+                          <span className="text-[11px] text-slate-500 block mt-0.5">
+                            Display a dedicated Featured row on the homepage and a Featured link in the navbar.
+                          </span>
+                        </div>
+                        
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={settings.show_featured}
+                          onClick={() => setSettings({ ...settings, show_featured: !settings.show_featured })}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            settings.show_featured ? 'bg-brand-600' : 'bg-slate-300'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              settings.show_featured ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      <div className="text-[11px] text-slate-500 bg-white p-3 rounded-lg border border-slate-200/80">
+                        💡 Products flagged as <strong>Featured</strong> in the product inventory manager will be displayed here.
+                      </div>
+                    </div>
+
+                    {/* COLLECTION 2: BEST SELLER */}
+                    <div className={`rounded-xl border p-4 space-y-4 transition-all ${
+                      settings.show_best_seller ? 'border-blue-200 bg-blue-50/20' : 'border-slate-200 bg-slate-50/50 opacity-80'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                            <Package className="h-4 w-4 text-blue-600" /> Best Seller Collection
+                          </span>
+                          <span className="text-[11px] text-slate-500 block mt-0.5">
+                            Display a Best Seller showcase row on the homepage and in the storefront navigation.
+                          </span>
+                        </div>
+                        
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={settings.show_best_seller}
+                          onClick={() => setSettings({ ...settings, show_best_seller: !settings.show_best_seller })}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            settings.show_best_seller ? 'bg-brand-600' : 'bg-slate-300'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              settings.show_best_seller ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {settings.show_best_seller && (
+                        <div className="pt-3 border-t border-slate-200 space-y-3 bg-white p-3.5 rounded-lg border">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="text-xs font-bold text-slate-800 block">Automatic Calculation Mode</span>
+                              <span className="text-[11px] text-slate-500 block mt-0.5">
+                                {settings.auto_best_seller
+                                  ? 'Auto mode active: Products with highest all-time sales will be calculated automatically.'
+                                  : 'Manual mode active: Only products you manually tag as Best Seller will be displayed.'}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={settings.auto_best_seller}
+                              onClick={() => setSettings({ ...settings, auto_best_seller: !settings.auto_best_seller })}
+                              className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                settings.auto_best_seller ? 'bg-brand-600' : 'bg-slate-300'
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                  settings.auto_best_seller ? 'translate-x-4' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* COLLECTION 3: TRENDING */}
+                    <div className={`rounded-xl border p-4 space-y-4 transition-all ${
+                      settings.show_trending ? 'border-purple-200 bg-purple-50/20' : 'border-slate-200 bg-slate-50/50 opacity-80'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                            <BarChart3 className="h-4 w-4 text-purple-600" /> Trending Collection
+                          </span>
+                          <span className="text-[11px] text-slate-500 block mt-0.5">
+                            Display a Trending showcase row on the homepage and in the storefront navigation.
+                          </span>
+                        </div>
+                        
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={settings.show_trending}
+                          onClick={() => setSettings({ ...settings, show_trending: !settings.show_trending })}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            settings.show_trending ? 'bg-brand-600' : 'bg-slate-300'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              settings.show_trending ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {settings.show_trending && (
+                        <div className="pt-3 border-t border-slate-200 space-y-3 bg-white p-3.5 rounded-lg border">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="text-xs font-bold text-slate-800 block">Automatic Calculation Mode (Last 30 Days)</span>
+                              <span className="text-[11px] text-slate-500 block mt-0.5">
+                                {settings.auto_trending
+                                  ? 'Auto mode active: Products with the most sales in the last 30 days are automatically featured.'
+                                  : 'Manual mode active: Only products you manually tag as Trending will be displayed.'}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={settings.auto_trending}
+                              onClick={() => setSettings({ ...settings, auto_trending: !settings.auto_trending })}
+                              className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                settings.auto_trending ? 'bg-brand-600' : 'bg-slate-300'
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                  settings.auto_trending ? 'translate-x-4' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
                 </div>
 
-                <div className="space-y-5">
-                  
-                  {/* COLLECTION 1: FEATURED */}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-slate-900 block flex items-center gap-1.5">
-                          <Sparkles className="h-4 w-4 text-brand-600" /> Featured Collection
-                        </span>
-                        <span className="text-[11px] text-slate-500 block mt-0.5">
-                          Display a dedicated Featured row on the homepage and a Featured link in the navbar.
-                        </span>
-                      </div>
-                      
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={settings.show_featured}
-                        onClick={() => setSettings({ ...settings, show_featured: !settings.show_featured })}
-                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                          settings.show_featured ? 'bg-brand-600' : 'bg-slate-300'
-                        }`}
-                      >
-                        <span
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            settings.show_featured ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                    <div className="text-[11px] text-slate-500 bg-white p-3 rounded-lg border border-slate-200/80">
-                      💡 Products flagged as <strong>Featured</strong> in the product inventory manager will be displayed here.
-                    </div>
+                {/* RIGHT COLUMN: LIVE STOREFRONT SHOWCASE & LAYOUT PREVIEW */}
+                <div className="lg:col-span-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 text-brand-600" /> Live Homepage Structure
+                    </span>
+                    <span className="text-[10px] font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-200">
+                      Live Preview
+                    </span>
                   </div>
 
-                  {/* COLLECTION 2: BEST SELLER */}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-slate-900 block flex items-center gap-1.5">
-                          <Package className="h-4 w-4 text-blue-600" /> Best Seller Collection
-                        </span>
-                        <span className="text-[11px] text-slate-500 block mt-0.5">
-                          Display a Best Seller showcase row on the homepage and in the storefront navigation.
+                  {/* MINI STOREFRONT WIREFRAME */}
+                  <div className="rounded-2xl border border-slate-300/80 bg-slate-900 p-3.5 space-y-3 shadow-inner text-white font-sans text-xs">
+                    
+                    {/* 1. Mini Navbar */}
+                    <div className="rounded-xl bg-slate-800/90 border border-slate-700/80 p-2.5 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <div className="h-3.5 w-3.5 rounded-full bg-brand-500" />
+                        <span className="text-[10px] font-bold text-slate-200 truncate max-w-[90px]">
+                          {settings.store_name}
                         </span>
                       </div>
-                      
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={settings.show_best_seller}
-                        onClick={() => setSettings({ ...settings, show_best_seller: !settings.show_best_seller })}
-                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                          settings.show_best_seller ? 'bg-brand-600' : 'bg-slate-300'
-                        }`}
-                      >
-                        <span
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            settings.show_best_seller ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
+                      <div className="flex items-center gap-1 text-[9px] font-semibold">
+                        <span className={`px-1.5 py-0.5 rounded transition ${settings.show_featured ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'text-slate-600 line-through'}`}>
+                          Featured
+                        </span>
+                        <span className={`px-1.5 py-0.5 rounded transition ${settings.show_trending ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'text-slate-600 line-through'}`}>
+                          Trending
+                        </span>
+                        <span className={`px-1.5 py-0.5 rounded transition ${settings.show_best_seller ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'text-slate-600 line-through'}`}>
+                          Best
+                        </span>
+                      </div>
                     </div>
 
-                    {settings.show_best_seller && (
-                      <div className="pt-3 border-t border-slate-200 space-y-3 bg-white p-3.5 rounded-lg border">
+                    {/* 2. Mini Hero Banner */}
+                    <div className="rounded-xl bg-slate-800/80 border border-slate-700/60 p-3 text-center space-y-1">
+                      <span className="inline-block px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-brand-500 text-white">
+                        {settings.hero_badge_text || 'Hero Banner'}
+                      </span>
+                      <p className="text-[11px] font-bold text-white truncate">{settings.hero_title || 'Main Store Headline'}</p>
+                    </div>
+
+                    {/* 3. SHOWCASE ROW 1: FEATURED */}
+                    {settings.show_featured ? (
+                      <div className="rounded-xl bg-amber-950/40 border border-amber-500/40 p-2.5 space-y-1.5 animate-fadeIn">
                         <div className="flex items-center justify-between">
-                          <div>
-                            <span className="text-xs font-bold text-slate-800 block">Automatic Calculation Mode</span>
-                            <span className="text-[11px] text-slate-500 block mt-0.5">
-                              {settings.auto_best_seller
-                                ? 'Auto mode active: Products with highest all-time sales will be calculated automatically.'
-                                : 'Manual mode active: Only products you manually tag as Best Seller will be displayed.'}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={settings.auto_best_seller}
-                            onClick={() => setSettings({ ...settings, auto_best_seller: !settings.auto_best_seller })}
-                            className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                              settings.auto_best_seller ? 'bg-brand-600' : 'bg-slate-300'
-                            }`}
-                          >
-                            <span
-                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                settings.auto_best_seller ? 'translate-x-4' : 'translate-x-0'
-                              }`}
-                            />
-                          </button>
+                          <span className="text-[10px] font-bold text-amber-300 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" /> Featured Showcase
+                          </span>
+                          <span className="text-[8px] font-black uppercase tracking-wider text-amber-400 bg-amber-900/60 px-1.5 py-0.5 rounded">
+                            Visible
+                          </span>
+                        </div>
+                        <div className="rounded-lg bg-amber-900/30 border border-amber-500/20 p-2 flex items-center justify-between text-[9px] text-slate-300">
+                          <span>Carousel Spotlight (Top #1)</span>
+                          <span className="font-bold text-amber-200">BUY NOW • ৳</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1 pt-0.5">
+                          {[1, 2, 3, 4].map((n) => (
+                            <div key={n} className="h-6 rounded bg-amber-900/20 border border-amber-500/20 flex items-center justify-center text-[7px] text-amber-300/70 font-mono">
+                              Card #{n}
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    )}
-                  </div>
-
-                  {/* COLLECTION 3: TRENDING */}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-slate-900 block flex items-center gap-1.5">
-                          <BarChart3 className="h-4 w-4 text-purple-600" /> Trending Collection
-                        </span>
-                        <span className="text-[11px] text-slate-500 block mt-0.5">
-                          Display a Trending showcase row on the homepage and in the storefront navigation.
-                        </span>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900/50 p-2 text-center text-[10px] text-slate-500">
+                        ✕ Featured Row Hidden from Homepage
                       </div>
-                      
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={settings.show_trending}
-                        onClick={() => setSettings({ ...settings, show_trending: !settings.show_trending })}
-                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                          settings.show_trending ? 'bg-brand-600' : 'bg-slate-300'
-                        }`}
-                      >
-                        <span
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            settings.show_trending ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
-                    </div>
+                    )}
 
-                    {settings.show_trending && (
-                      <div className="pt-3 border-t border-slate-200 space-y-3 bg-white p-3.5 rounded-lg border">
+                    {/* 4. SHOWCASE ROW 2: TRENDING */}
+                    {settings.show_trending ? (
+                      <div className="rounded-xl bg-purple-950/40 border border-purple-500/40 p-2.5 space-y-1.5 animate-fadeIn">
                         <div className="flex items-center justify-between">
-                          <div>
-                            <span className="text-xs font-bold text-slate-800 block">Automatic Calculation Mode (Last 30 Days)</span>
-                            <span className="text-[11px] text-slate-500 block mt-0.5">
-                              {settings.auto_trending
-                                ? 'Auto mode active: Products with the most sales in the last 30 days are automatically featured.'
-                                : 'Manual mode active: Only products you manually tag as Trending will be displayed.'}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={settings.auto_trending}
-                            onClick={() => setSettings({ ...settings, auto_trending: !settings.auto_trending })}
-                            className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                              settings.auto_trending ? 'bg-brand-600' : 'bg-slate-300'
-                            }`}
-                          >
-                            <span
-                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                settings.auto_trending ? 'translate-x-4' : 'translate-x-0'
-                              }`}
-                            />
-                          </button>
+                          <span className="text-[10px] font-bold text-purple-300 flex items-center gap-1">
+                            <BarChart3 className="h-3 w-3" /> Trending Showcase
+                          </span>
+                          <span className="text-[8px] font-black uppercase tracking-wider text-purple-400 bg-purple-900/60 px-1.5 py-0.5 rounded">
+                            {settings.auto_trending ? 'Auto (30D)' : 'Manual'}
+                          </span>
+                        </div>
+                        <div className="rounded-lg bg-purple-900/30 border border-purple-500/20 p-2 flex items-center justify-between text-[9px] text-slate-300">
+                          <span>Carousel Spotlight (Top #1)</span>
+                          <span className="font-bold text-purple-200">BUY NOW • ৳</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1 pt-0.5">
+                          {[1, 2, 3, 4].map((n) => (
+                            <div key={n} className="h-6 rounded bg-purple-900/20 border border-purple-500/20 flex items-center justify-center text-[7px] text-purple-300/70 font-mono">
+                              Card #{n}
+                            </div>
+                          ))}
                         </div>
                       </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900/50 p-2 text-center text-[10px] text-slate-500">
+                        ✕ Trending Row Hidden from Homepage
+                      </div>
                     )}
-                  </div>
 
+                    {/* 5. SHOWCASE ROW 3: BEST SELLER */}
+                    {settings.show_best_seller ? (
+                      <div className="rounded-xl bg-blue-950/40 border border-blue-500/40 p-2.5 space-y-1.5 animate-fadeIn">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-blue-300 flex items-center gap-1">
+                            <Package className="h-3 w-3" /> Best Seller Showcase
+                          </span>
+                          <span className="text-[8px] font-black uppercase tracking-wider text-blue-400 bg-blue-900/60 px-1.5 py-0.5 rounded">
+                            {settings.auto_best_seller ? 'Auto All-Time' : 'Manual'}
+                          </span>
+                        </div>
+                        <div className="rounded-lg bg-blue-900/30 border border-blue-500/20 p-2 flex items-center justify-between text-[9px] text-slate-300">
+                          <span>Carousel Spotlight (Top #1)</span>
+                          <span className="font-bold text-blue-200">BUY NOW • ৳</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1 pt-0.5">
+                          {[1, 2, 3, 4].map((n) => (
+                            <div key={n} className="h-6 rounded bg-blue-900/20 border border-blue-500/20 flex items-center justify-center text-[7px] text-blue-300/70 font-mono">
+                              Card #{n}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900/50 p-2 text-center text-[10px] text-slate-500">
+                        ✕ Best Seller Row Hidden from Homepage
+                      </div>
+                    )}
+
+                    {/* 6. Main Catalog Row */}
+                    <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-2 text-center">
+                      <span className="text-[9px] font-bold text-slate-400">
+                        Explore All Products (Full Filterable Catalog)
+                      </span>
+                    </div>
+
+                  </div>
                 </div>
 
               </div>

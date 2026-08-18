@@ -8,6 +8,7 @@ import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 import CartDrawer from '@/components/CartDrawer'
 import ProductCard from '@/components/ProductCard'
+import ShowcaseSection from '@/components/ShowcaseSection'
 import { useStore } from '@/context/StoreContext'
 
 interface Product {
@@ -170,79 +171,46 @@ export default function HomePageClient({ products, categories, allTimeSales = {}
         </div>
       </section>
 
-      {/* SHOWCASE SECTION 1: FEATURED ROW (If Enabled) */}
+      {/* SHOWCASE SECTION 1: FEATURED */}
       {settings.show_featured && featuredProducts.length > 0 && (
-        <section className="border-b border-slate-200 bg-white py-8 sm:py-12">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-4 sm:space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="hidden sm:block text-xs font-bold uppercase tracking-wider text-brand-600">Hand-Picked Selections</span>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-950">Featured</h2>
-              </div>
-              <Link
-                href="/featured"
-                className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg transition"
-              >
-                <span>View All</span>
-                <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-              </Link>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-              {featuredProducts.slice(0, 4).map(renderProductCard)}
-            </div>
-          </div>
-        </section>
+        <ShowcaseSection
+          title="Featured Collection"
+          subtitle="Hand-Picked Selections"
+          badgeText="Hand-Picked Selections"
+          type="featured"
+          viewAllHref="/featured"
+          products={featuredProducts}
+          categories={categories}
+          bgStyle="bg-white"
+        />
       )}
 
-      {/* SHOWCASE SECTION 2: TRENDING ROW (If Enabled) */}
+      {/* SHOWCASE SECTION 2: TRENDING */}
       {settings.show_trending && trendingProducts.length > 0 && (
-        <section className="border-b border-slate-200 bg-slate-50/50 py-8 sm:py-12">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-4 sm:space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="hidden sm:block text-xs font-bold uppercase tracking-wider text-purple-600">Hot Right Now</span>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-950">Trending</h2>
-              </div>
-              <Link
-                href="/trending"
-                className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-purple-700 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg transition"
-              >
-                <span>View All</span>
-                <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-              </Link>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-              {trendingProducts.slice(0, 4).map(renderProductCard)}
-            </div>
-          </div>
-        </section>
+        <ShowcaseSection
+          title="Trending This Month"
+          subtitle="Hot Right Now"
+          badgeText="Hot Right Now"
+          type="trending"
+          viewAllHref="/trending"
+          products={trendingProducts}
+          categories={categories}
+          bgStyle="bg-slate-50/70"
+        />
       )}
 
-      {/* SHOWCASE SECTION 3: BEST SELLER ROW (If Enabled) */}
+      {/* SHOWCASE SECTION 3: BEST SELLERS */}
       {settings.show_best_seller && bestSellerProducts.length > 0 && (
-        <section className="border-b border-slate-200 bg-white py-8 sm:py-12">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-4 sm:space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="hidden sm:block text-xs font-bold uppercase tracking-wider text-blue-600">Customer Favorites</span>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-950">Best Sellers</h2>
-              </div>
-              <Link
-                href="/best-seller"
-                className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg transition"
-              >
-                <span>View All</span>
-                <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-              </Link>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-              {bestSellerProducts.slice(0, 4).map(renderProductCard)}
-            </div>
-          </div>
-        </section>
+        <ShowcaseSection
+          title="All-Time Best Sellers"
+          subtitle="Customer Favorites"
+          badgeText="Customer Favorites"
+          type="best_seller"
+          viewAllHref="/best-seller"
+          products={bestSellerProducts}
+          categories={categories}
+          bgStyle="bg-white"
+        />
       )}
 
       {/* ALL PRODUCTS MAIN CATALOG SECTION */}
