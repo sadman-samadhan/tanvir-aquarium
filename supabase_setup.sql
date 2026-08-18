@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.products (
     description TEXT,
     price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     old_price NUMERIC(10, 2) DEFAULT 0.00,
+    buying_price NUMERIC(10, 2) DEFAULT 0.00,
     stock INT NOT NULL DEFAULT 0,
     images TEXT[] DEFAULT '{}',
     variations JSONB DEFAULT '{"options": []}'::JSONB,

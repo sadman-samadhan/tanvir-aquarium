@@ -6,10 +6,10 @@ export const revalidate = 0
 export default async function AdminStatsPage() {
   const supabase = createAdminClient()
 
-  // Fetch all orders with items and products
+  // Fetch all orders with items and products (including buying_price for profit calculation)
   const { data: orders } = await supabase
     .from('orders')
-    .select('*, order_items(*, products(id, name, price, stock, images))')
+    .select('*, order_items(*, products(id, name, price, buying_price, stock, images))')
     .order('created_at', { ascending: false })
 
   // Fetch all products for inventory valuation

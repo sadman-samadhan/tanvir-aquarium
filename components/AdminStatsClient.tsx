@@ -20,6 +20,7 @@ interface OrderItem {
     id: string
     name: string
     price: number
+    buying_price?: number
     stock: number
     images?: string[]
   }
@@ -49,6 +50,7 @@ interface Product {
   id: string
   name: string
   price: number
+  buying_price?: number
   stock: number
   images?: string[]
   category_id?: string
@@ -131,7 +133,27 @@ export default function AdminStatsClient({ initialOrders, initialProducts, initi
   // Average Order Value (AOV)
   const averageOrderValue = validOrders.length > 0 ? Math.round(grossRevenue / validOrders.length) : 0
 
-  // 2. ORDER STATUS BREAKDOWN
+  // 2. PROFIT & COGS COMPUTATION (From all items in non-cancelled orders)
+  let totalCOGS = 0
+  let totalProductRevenue = 0
+
+  validOrders.forEach((order) => {
+    (order.order_items || []).forEach((item) => {
+      const qty = Number(item.quantity || 1)
+      const sellPrice = Number(item.price || 0)
+      const buyCost = Number(item.products?.buying_price || 0)
+
+      totalProductRevenue += sellPrice * qty
+      totalCOGS += buyCost * qty
+    })
+  })
+
+  const estimatedGrossProfit = Math.max(0, totalProductRevenue - totalCOGS)
+  const profitMarginPercent = totalProductRevenue > 0
+    ? Math.round((estimatedGrossProfit / totalProductRevenue) * 100)
+    : 0
+
+  // 3. ORDER STATUS BREAKDOWN
   const statusCounts = {
     Pending: validOrders.filter((o) => (o.order_status || 'Pending') === 'Pending').length,
     Confirmed: validOrders.filter((o) => o.order_status === 'Confirmed').length,
@@ -141,7 +163,7 @@ export default function AdminStatsClient({ initialOrders, initialProducts, initi
     Cancelled: cancelledOrders.length
   }
 
-  // 3. PAYMENT STATUS BREAKDOWN
+  // 4. PAYMENT STATUS BREAKDOWN
   const paymentCounts = {
     FullyPaid: validOrders.filter((o) => o.payment_status === 'FullyPaid').length,
     PartiallyPaid: validOrders.filter((o) => o.payment_status === 'DeliveryChargePrePaid' || (o.payment_details?.advance_paid && o.payment_details.advance_paid > 0 && o.payment_status !== 'FullyPaid')).length,
@@ -149,21 +171,23 @@ export default function AdminStatsClient({ initialOrders, initialProducts, initi
     Failed: validOrders.filter((o) => o.payment_status === 'Failed').length
   }
 
-  // 4. COURIER LOGISTICS BREAKDOWN
+  // 5. COURIER LOGISTICS BREAKDOWN
   const courierCounts = {
     Pathao: validOrders.filter((o) => o.shipping_provider === 'pathao' || o.pathao_consignment_id).length,
     Steadfast: validOrders.filter((o) => o.shipping_provider === 'steadfast' || o.steadfast_consignment_id).length,
     Manual: validOrders.filter((o) => o.shipping_provider === 'manual' && !o.pathao_consignment_id && !o.steadfast_consignment_id).length
   }
 
-  // 5. INVENTORY & STOCK VALUATION
+  // 6. INVENTORY & STOCK VALUATION
   const totalStockUnits = initialProducts.reduce((sum, p) => sum + (p.stock || 0), 0)
   const totalStockValuation = initialProducts.reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.stock || 0)), 0)
+  const totalStockCostValuation = initialProducts.reduce((sum, p) => sum + (Number(p.buying_price || 0) * Number(p.stock || 0)), 0)
+  const potentialInventoryProfit = Math.max(0, totalStockValuation - totalStockCostValuation)
   const outOfStockProducts = initialProducts.filter((p) => (p.stock || 0) <= 0)
   const lowStockProducts = initialProducts.filter((p) => (p.stock || 0) > 0 && (p.stock || 0) <= 5)
 
-  // 6. TOP SELLING PRODUCTS (From non-cancelled orders)
-  const productSalesMap: Record<string, { id: string; name: string; quantity: number; revenue: number; image?: string }> = {}
+  // 7. TOP SELLING PRODUCTS WITH PROFIT BREAKDOWN
+  const productSalesMap: Record<string, { id: string; name: string; quantity: number; revenue: number; cost: number; profit: number; image?: string }> = {}
   validOrders.forEach((order) => {
     (order.order_items || []).forEach((item) => {
       const prodId = item.product_id || item.products?.id || item.id
@@ -171,6 +195,8 @@ export default function AdminStatsClient({ initialOrders, initialProducts, initi
       const prodImg = item.products?.images?.[0]
       const qty = Number(item.quantity || 1)
       const rev = Number(item.price || 0) * qty
+      const cost = Number(item.products?.buying_price || 0) * qty
+      const profit = Math.max(0, rev - cost)
 
       if (!productSalesMap[prodId]) {
         productSalesMap[prodId] = {
@@ -178,11 +204,15 @@ export default function AdminStatsClient({ initialOrders, initialProducts, initi
           name: prodName,
           quantity: 0,
           revenue: 0,
+          cost: 0,
+          profit: 0,
           image: prodImg
         }
       }
       productSalesMap[prodId].quantity += qty
       productSalesMap[prodId].revenue += rev
+      productSalesMap[prodId].cost += cost
+      productSalesMap[prodId].profit += profit
     })
   })
 
@@ -246,38 +276,55 @@ export default function AdminStatsClient({ initialOrders, initialProducts, initi
 
         <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 space-y-4 sm:space-y-6">
           
-          {/* TOP KEY METRICS CARDS (2x2 on Mobile, 4x1 on Desktop) */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+          {/* TOP KEY METRICS CARDS (Financial & Profit Performance) */}
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5 sm:gap-4">
             
-            {/* Card 1: Gross Revenue */}
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-2">
+            {/* Card 1: Gross Sales Volume */}
+            <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-2">
               <div className="flex items-center justify-between text-slate-500">
-                <span className="text-xs font-bold uppercase tracking-wider">Gross Sales Volume</span>
-                <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
-                  <TrendingUp className="h-5 w-5" />
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider">Gross Sales</span>
+                <div className="p-1.5 sm:p-2 rounded-xl bg-blue-50 text-blue-600">
+                  <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
                 </div>
               </div>
-              <p className="text-2xl font-black text-slate-950 font-mono">
+              <p className="text-xl sm:text-2xl font-black text-slate-950 font-mono">
                 ৳{grossRevenue.toLocaleString()}
               </p>
-              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
-                <span>{validOrders.length} valid orders</span>
-                <span className="font-semibold text-emerald-600">AOV: ৳{averageOrderValue.toLocaleString()}</span>
+              <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                <span>{validOrders.length} orders</span>
+                <span className="font-semibold text-blue-600">AOV: ৳{averageOrderValue.toLocaleString()}</span>
               </div>
             </div>
 
-            {/* Card 2: Net Collected Revenue */}
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-2">
+            {/* Card 2: Estimated Gross Profit (NEW) */}
+            <div className="bg-white rounded-2xl p-4 sm:p-5 border border-emerald-200/80 bg-gradient-to-b from-white to-emerald-50/20 shadow-sm space-y-2">
               <div className="flex items-center justify-between text-slate-500">
-                <span className="text-xs font-bold uppercase tracking-wider">Net Realized Revenue</span>
-                <div className="p-2 rounded-xl bg-brand-50 text-brand-600">
-                  <DollarSign className="h-5 w-5" />
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-emerald-800">Gross Profit</span>
+                <div className="p-1.5 sm:p-2 rounded-xl bg-emerald-100 text-emerald-700">
+                  <DollarSign className="h-4 w-4 sm:h-5 sm:w-5" />
                 </div>
               </div>
-              <p className="text-2xl font-black text-slate-950 font-mono">
+              <p className="text-xl sm:text-2xl font-black text-emerald-700 font-mono">
+                ৳{estimatedGrossProfit.toLocaleString()}
+              </p>
+              <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 pt-1 border-t border-emerald-100">
+                <span className="text-emerald-700 font-bold">{profitMarginPercent}% margin</span>
+                <span className="font-mono text-slate-500">COGS: ৳{totalCOGS.toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* Card 3: Net Realized Revenue */}
+            <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-2">
+              <div className="flex items-center justify-between text-slate-500">
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider">Collected Revenue</span>
+                <div className="p-1.5 sm:p-2 rounded-xl bg-brand-50 text-brand-600">
+                  <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5" />
+                </div>
+              </div>
+              <p className="text-xl sm:text-2xl font-black text-slate-950 font-mono">
                 ৳{netCollectedRevenue.toLocaleString()}
               </p>
-              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+              <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 pt-1 border-t border-slate-100">
                 <span>Advance + Delivered</span>
                 <span className="font-semibold text-brand-600">
                   {grossRevenue > 0 ? Math.round((netCollectedRevenue / grossRevenue) * 100) : 0}% realized
@@ -285,37 +332,39 @@ export default function AdminStatsClient({ initialOrders, initialProducts, initi
               </div>
             </div>
 
-            {/* Card 3: Outstanding Doorstep Due */}
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-2">
+            {/* Card 4: Outstanding Doorstep Due */}
+            <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-2">
               <div className="flex items-center justify-between text-slate-500">
-                <span className="text-xs font-bold uppercase tracking-wider">Doorstep COD Due</span>
-                <div className="p-2 rounded-xl bg-amber-50 text-amber-600">
-                  <Clock className="h-5 w-5" />
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider">Doorstep COD Due</span>
+                <div className="p-1.5 sm:p-2 rounded-xl bg-amber-50 text-amber-600">
+                  <Clock className="h-4 w-4 sm:h-5 sm:w-5" />
                 </div>
               </div>
-              <p className="text-2xl font-black text-amber-700 font-mono">
+              <p className="text-xl sm:text-2xl font-black text-amber-700 font-mono">
                 ৳{outstandingDoorstepDue.toLocaleString()}
               </p>
-              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
-                <span>Pending courier collection</span>
+              <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                <span>In transit COD</span>
                 <span className="font-bold text-amber-700">Receivable</span>
               </div>
             </div>
 
-            {/* Card 4: Inventory Valuation */}
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-2">
+            {/* Card 5: Inventory Asset Valuation */}
+            <div className="col-span-2 sm:col-span-1 bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-2">
               <div className="flex items-center justify-between text-slate-500">
-                <span className="text-xs font-bold uppercase tracking-wider">Stock Valuation</span>
-                <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
-                  <Package className="h-5 w-5" />
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider">Stock Valuation</span>
+                <div className="p-1.5 sm:p-2 rounded-xl bg-purple-50 text-purple-600">
+                  <Package className="h-4 w-4 sm:h-5 sm:w-5" />
                 </div>
               </div>
-              <p className="text-2xl font-black text-slate-950 font-mono">
+              <p className="text-xl sm:text-2xl font-black text-slate-950 font-mono">
                 ৳{totalStockValuation.toLocaleString()}
               </p>
-              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
-                <span>{totalStockUnits.toLocaleString()} total units</span>
-                <span className="font-semibold text-blue-600">{initialProducts.length} items</span>
+              <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                <span>{totalStockUnits} units</span>
+                <span className="font-mono text-purple-700 font-semibold" title="Cost of Goods in Inventory">
+                  Cost: ৳{totalStockCostValuation.toLocaleString()}
+                </span>
               </div>
             </div>
 
@@ -437,11 +486,11 @@ export default function AdminStatsClient({ initialOrders, initialProducts, initi
           {/* ROW 3: TOP PRODUCTS & INVENTORY HEALTH ALERTS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
-            {/* Top Selling Products List */}
+            {/* Top Selling Products List with Profit Breakdown */}
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-emerald-600" /> Best Performing Products
+                  <TrendingUp className="h-4 w-4 text-emerald-600" /> Best Performing Products & Profit
                 </h3>
                 <Link
                   href="/stradmn/products"
@@ -457,24 +506,35 @@ export default function AdminStatsClient({ initialOrders, initialProducts, initi
                 </p>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {topSellingProducts.map((p, idx) => (
-                    <div key={p.id} className="flex items-center justify-between py-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono font-black text-slate-400 w-4">
-                          #{idx + 1}
-                        </span>
-                        <div>
-                          <p className="text-xs font-bold text-slate-900">{p.name}</p>
-                          <span className="text-[11px] text-slate-500 font-medium">
-                            {p.quantity} units sold
+                  {topSellingProducts.map((p, idx) => {
+                    const prodMargin = p.revenue > 0 ? Math.round((p.profit / p.revenue) * 100) : 0
+                    return (
+                      <div key={p.id} className="flex items-center justify-between py-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="text-xs font-mono font-black text-slate-400 w-4 flex-shrink-0">
+                            #{idx + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-900 truncate">{p.name}</p>
+                            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                              <span>{p.quantity} sold</span>
+                              <span>•</span>
+                              <span>Rev: ৳{p.revenue.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right flex-shrink-0">
+                          <span className="text-xs font-mono font-black text-emerald-700 block">
+                            +৳{p.profit.toLocaleString()}
+                          </span>
+                          <span className="text-[10px] font-bold text-emerald-600/80 bg-emerald-50 px-1.5 py-0.5 rounded">
+                            {prodMargin}% margin
                           </span>
                         </div>
                       </div>
-                      <span className="text-xs font-mono font-black text-emerald-700">
-                        ৳{p.revenue.toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>

@@ -40,6 +40,7 @@ export interface Product {
   description: string
   price: number
   old_price: number
+  buying_price?: number
   stock: number
   images: string[]
   variations: any
@@ -110,6 +111,7 @@ export default function AdminProductsClient({ initialProducts, initialCategories
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
   const [price, setPrice] = useState('')
   const [oldPrice, setOldPrice] = useState('')
+  const [buyingPrice, setBuyingPrice] = useState('')
   const [stock, setStock] = useState('10')
   const [description, setDescription] = useState('')
   const [images, setImages] = useState<string[]>([])
@@ -125,6 +127,7 @@ export default function AdminProductsClient({ initialProducts, initialCategories
   const [editCategoryIds, setEditCategoryIds] = useState<string[]>([])
   const [editPrice, setEditPrice] = useState('')
   const [editOldPrice, setEditOldPrice] = useState('')
+  const [editBuyingPrice, setEditBuyingPrice] = useState('')
   const [editStock, setEditStock] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [editImages, setEditImages] = useState<string[]>([])
@@ -175,7 +178,8 @@ export default function AdminProductsClient({ initialProducts, initialCategories
     const matchCat = (product.categories?.name || '').toLowerCase().includes(q)
     const matchDesc = (product.description || '').toLowerCase().includes(q)
     const matchPrice = String(product.price).includes(q)
-    return matchName || matchSlug || matchCat || matchDesc || matchPrice
+    const matchCost = product.buying_price ? String(product.buying_price).includes(q) : false
+    return matchName || matchSlug || matchCat || matchDesc || matchPrice || matchCost
   })
 
   const handleLogout = async () => {
@@ -233,7 +237,6 @@ export default function AdminProductsClient({ initialProducts, initialCategories
   }
 
   // Open Edit Modal
-  // Open Edit Modal
   const openEditModal = (product: Product) => {
     setEditingProduct(product)
     setEditName(product.name)
@@ -248,6 +251,7 @@ export default function AdminProductsClient({ initialProducts, initialCategories
     setEditCategoryIds(catIds)
     setEditPrice(String(product.price))
     setEditOldPrice(product.old_price ? String(product.old_price) : '')
+    setEditBuyingPrice(product.buying_price !== undefined && product.buying_price !== null ? String(product.buying_price) : '')
     setEditStock(String(product.stock))
     setEditDescription(product.description || '')
     setEditImages(product.images || [])
@@ -296,6 +300,7 @@ export default function AdminProductsClient({ initialProducts, initialCategories
         is_hidden: isHidden,
         price: Number(price),
         old_price: oldPrice ? Number(oldPrice) : 0,
+        buying_price: buyingPrice ? Number(buyingPrice) : 0,
         stock: finalStock,
         description,
         images,
@@ -321,6 +326,7 @@ export default function AdminProductsClient({ initialProducts, initialCategories
         setSelectedCategoryIds([])
         setPrice('')
         setOldPrice('')
+        setBuyingPrice('')
         setStock('10')
         setDescription('')
         setImages([])
@@ -379,6 +385,7 @@ export default function AdminProductsClient({ initialProducts, initialCategories
         is_hidden: editIsHidden,
         price: Number(editPrice),
         old_price: editOldPrice ? Number(editOldPrice) : 0,
+        buying_price: editBuyingPrice ? Number(editBuyingPrice) : 0,
         stock: finalStock,
         description: editDescription,
         images: editImages,
@@ -699,42 +706,71 @@ export default function AdminProductsClient({ initialProducts, initialCategories
                       </div>
                     </div>
 
-                    {/* Price & Stock */}
-                    <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
-                      <div>
-                        <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1">Price (৳) *</label>
-                        <input
-                          type="number"
-                          required
-                          value={price}
-                          onChange={(e) => setPrice(e.target.value)}
-                          placeholder="2500"
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
-                        />
+                    {/* Price, Cost & Stock */}
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+                        <div>
+                          <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1">Selling Price (৳) *</label>
+                          <input
+                            type="number"
+                            required
+                            value={price}
+                            onChange={(e) => setPrice(e.target.value)}
+                            placeholder="2500"
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500 font-semibold"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1 flex items-center justify-between">
+                            <span>Buying Cost (৳)</span>
+                            <span className="text-[9px] text-amber-600 font-semibold uppercase">Hidden</span>
+                          </label>
+                          <input
+                            type="number"
+                            value={buyingPrice}
+                            onChange={(e) => setBuyingPrice(e.target.value)}
+                            placeholder="1800"
+                            className="w-full rounded-xl border border-amber-200/80 bg-amber-50/20 px-3 py-2 text-xs outline-none focus:border-amber-500 font-semibold"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1">Old Price (৳)</label>
+                          <input
+                            type="number"
+                            value={oldPrice}
+                            onChange={(e) => setOldPrice(e.target.value)}
+                            placeholder="3000"
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1">
+                            {variationOptions.length > 0 ? 'Stock (Auto)' : 'Stock Units *'}
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            disabled={variationOptions.length > 0}
+                            value={variationOptions.length > 0 ? computeTotalStock(variationOptions, stock) : stock}
+                            onChange={(e) => setStock(e.target.value)}
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500 disabled:bg-slate-100 disabled:font-bold"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1">Old Price (৳)</label>
-                        <input
-                          type="number"
-                          value={oldPrice}
-                          onChange={(e) => setOldPrice(e.target.value)}
-                          placeholder="3000"
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1">
-                          {variationOptions.length > 0 ? 'Stock (Auto)' : 'Stock Units *'}
-                        </label>
-                        <input
-                          type="number"
-                          required
-                          disabled={variationOptions.length > 0}
-                          value={variationOptions.length > 0 ? computeTotalStock(variationOptions, stock) : stock}
-                          onChange={(e) => setStock(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500 disabled:bg-slate-100 disabled:font-bold"
-                        />
-                      </div>
+
+                      {/* Live Gross Margin Calculation */}
+                      {price && Number(price) > 0 && buyingPrice && Number(buyingPrice) > 0 && (
+                        <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px]">
+                          <span className="text-emerald-800 font-medium">Estimated Gross Profit:</span>
+                          <span className="font-bold text-emerald-700">
+                            +৳{(Number(price) - Number(buyingPrice)).toLocaleString()} / unit 
+                            ({Math.round(((Number(price) - Number(buyingPrice)) / Number(price)) * 100)}% margin)
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -905,39 +941,69 @@ export default function AdminProductsClient({ initialProducts, initialCategories
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
-                      <div>
-                        <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1">Price (৳) *</label>
-                        <input
-                          type="number"
-                          required
-                          value={editPrice}
-                          onChange={(e) => setEditPrice(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
-                        />
+                    {/* Price, Cost & Stock */}
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+                        <div>
+                          <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1">Selling Price (৳) *</label>
+                          <input
+                            type="number"
+                            required
+                            value={editPrice}
+                            onChange={(e) => setEditPrice(e.target.value)}
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500 font-semibold"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1 flex items-center justify-between">
+                            <span>Buying Cost (৳)</span>
+                            <span className="text-[9px] text-amber-600 font-semibold uppercase">Hidden</span>
+                          </label>
+                          <input
+                            type="number"
+                            value={editBuyingPrice}
+                            onChange={(e) => setEditBuyingPrice(e.target.value)}
+                            placeholder="Cost price"
+                            className="w-full rounded-xl border border-amber-200/80 bg-amber-50/20 px-3 py-2 text-xs outline-none focus:border-amber-500 font-semibold"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1">Old Price (৳)</label>
+                          <input
+                            type="number"
+                            value={editOldPrice}
+                            onChange={(e) => setEditOldPrice(e.target.value)}
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1">
+                            {editVariationOptions.length > 0 ? 'Stock (Auto)' : 'Stock Units *'}
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            disabled={editVariationOptions.length > 0}
+                            value={editVariationOptions.length > 0 ? computeTotalStock(editVariationOptions, editStock) : editStock}
+                            onChange={(e) => setEditStock(e.target.value)}
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500 disabled:bg-slate-100 disabled:font-bold"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1">Old Price (৳)</label>
-                        <input
-                          type="number"
-                          value={editOldPrice}
-                          onChange={(e) => setEditOldPrice(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] sm:text-xs font-bold text-slate-700 uppercase mb-1">
-                          {editVariationOptions.length > 0 ? 'Stock (Auto)' : 'Stock Units *'}
-                        </label>
-                        <input
-                          type="number"
-                          required
-                          disabled={editVariationOptions.length > 0}
-                          value={editVariationOptions.length > 0 ? computeTotalStock(editVariationOptions, editStock) : editStock}
-                          onChange={(e) => setEditStock(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500 disabled:bg-slate-100 disabled:font-bold"
-                        />
-                      </div>
+
+                      {/* Live Gross Margin Calculation */}
+                      {editPrice && Number(editPrice) > 0 && editBuyingPrice && Number(editBuyingPrice) > 0 && (
+                        <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px]">
+                          <span className="text-emerald-800 font-medium">Estimated Gross Profit:</span>
+                          <span className="font-bold text-emerald-700">
+                            +৳{(Number(editPrice) - Number(editBuyingPrice)).toLocaleString()} / unit 
+                            ({Math.round(((Number(editPrice) - Number(editBuyingPrice)) / Number(editPrice)) * 100)}% margin)
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -1100,10 +1166,15 @@ export default function AdminProductsClient({ initialProducts, initialCategories
                           <p className="font-bold text-slate-900 text-xs line-clamp-1">{product.name}</p>
                           <span className="text-[10px] font-mono text-slate-400 block truncate">/{product.slug}</span>
                           
-                          <div className="flex items-center gap-2 mt-1">
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
                             <span className="text-xs font-black text-slate-900">
                               ৳{Number(product.price).toLocaleString()}
                             </span>
+                            {product.buying_price !== undefined && Number(product.buying_price) > 0 && (
+                              <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                Cost: ৳{Number(product.buying_price).toLocaleString()}
+                              </span>
+                            )}
                             {product.old_price > 0 && (
                               <span className="text-[10px] text-slate-400 line-through">
                                 ৳{Number(product.old_price).toLocaleString()}
@@ -1319,7 +1390,15 @@ export default function AdminProductsClient({ initialProducts, initialCategories
                           </td>
 
                           <td className="p-4 font-semibold text-slate-900">
-                            <p>৳{Number(product.price).toLocaleString()}</p>
+                            <p className="font-bold">৳{Number(product.price).toLocaleString()}</p>
+                            {product.buying_price !== undefined && Number(product.buying_price) > 0 && (
+                              <p className="text-[10px] text-slate-500 font-normal mt-0.5">
+                                Cost: <span className="font-semibold text-slate-700">৳{Number(product.buying_price).toLocaleString()}</span>
+                                <span className="text-emerald-600 font-bold ml-1">
+                                  (+৳{(Number(product.price) - Number(product.buying_price)).toLocaleString()})
+                                </span>
+                              </p>
+                            )}
                             {product.old_price > 0 && (
                               <p className="text-[10px] text-slate-400 line-through">
                                 ৳{Number(product.old_price).toLocaleString()}

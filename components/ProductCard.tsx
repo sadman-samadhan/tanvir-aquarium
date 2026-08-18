@@ -24,6 +24,7 @@ export interface Product {
   description?: string
   price: number
   old_price?: number
+  buying_price?: number
   stock: number
   images: string[]
   variations?: any
