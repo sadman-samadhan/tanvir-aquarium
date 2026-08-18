@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createAdminClient } from '@/utils/supabase/server'
+import { createAdminClient } from '@/utils/supabase/server'
+import { getStoreSettings } from '@/utils/settings'
+import { bookPathaoConsignment, bookSteadfastConsignment } from '@/utils/courier'
 import axios from 'axios'
 
-// 1. GET BKASH AUTHENTICATION TOKEN
+export const dynamic = 'force-dynamic'
+
+// 1. GET BKASH AUTHENTICATION TOKEN (Using DB Settings)
 async function getBkashToken() {
-  const { BKASH_API_URL, BKASH_APP_KEY, BKASH_APP_SECRET, BKASH_USERNAME, BKASH_PASSWORD } = process.env
+  const settings = await getStoreSettings()
+  const BKASH_API_URL = settings.bkash_api_url || process.env.BKASH_API_URL || 'https://tokenized.sandbox.bka.sh/v1.2.0-beta'
+  const BKASH_APP_KEY = settings.bkash_app_key || process.env.BKASH_APP_KEY
+  const BKASH_APP_SECRET = settings.bkash_app_secret || process.env.BKASH_APP_SECRET
+  const BKASH_USERNAME = settings.bkash_username || process.env.BKASH_USERNAME
+  const BKASH_PASSWORD = settings.bkash_password || process.env.BKASH_PASSWORD
+
+  if (!BKASH_APP_KEY || !BKASH_APP_SECRET || !BKASH_USERNAME || !BKASH_PASSWORD) {
+    throw new Error('bKash credentials are not configured in settings.')
+  }
+
   try {
     const response = await axios.post(`${BKASH_API_URL}/tokenized/checkout/token/grant`, {
       app_key: BKASH_APP_KEY,
@@ -23,90 +37,79 @@ async function getBkashToken() {
   }
 }
 
-// 2. PATHAO CONSIGNMENT BOOKING HELPERS
-async function getPathaoToken() {
-  const { PATHAO_API_URL, PATHAO_CLIENT_ID, PATHAO_CLIENT_SECRET, PATHAO_USERNAME, PATHAO_PASSWORD } = process.env
-  const response = await axios.post(`${PATHAO_API_URL}/aladdin/api/v1/issue-token`, {
-    client_id: PATHAO_CLIENT_ID,
-    client_secret: PATHAO_CLIENT_SECRET,
-    username: PATHAO_USERNAME,
-    password: PATHAO_PASSWORD,
-  }, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    }
-  })
-  return response.data.access_token
-}
-
-async function bookPathaoConsignment(order: any, codAmount: number) {
-  const { PATHAO_API_URL, PATHAO_STORE_ID } = process.env
-  try {
-    const token = await getPathaoToken()
-    
-    // Formulate consignment payload
-    const payload = {
-      store_id: Number(PATHAO_STORE_ID),
-      merchant_order_id: order.id,
-      recipient_name: order.customer_name,
-      recipient_phone: order.customer_phone,
-      recipient_address: order.shipping_address,
-      recipient_city: Number(order.city_id),
-      recipient_zone: Number(order.zone_id),
-      recipient_area: Number(order.area_id),
-      delivery_type: 48, // 48 = Normal (Default)
-      item_type: 2, // 2 = Parcel
-      item_quantity: 1,
-      item_weight: 0.5, // Default weight estimate
-      amount_to_collect: codAmount,
-      special_instruction: order.payment_method === 'COD' 
-        ? `Prepaid Delivery Charge. Collect COD ৳${codAmount} product value.` 
-        : 'Fully Prepaid. Collect ৳0 COD.'
-    }
-
-    const response = await axios.post(`${PATHAO_API_URL}/aladdin/api/v1/orders`, payload, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    })
-
-    if (response.data?.data?.consignment_id) {
-      return response.data.data.consignment_id
-    }
-    return null
-  } catch (error: any) {
-    console.error('Pathao Booking Error:', error.response?.data || error.message)
-    // Return null, we will allow admin to manually retry dispatch from admin panel
-    return null
-  }
-}
-
-// 3. API POST: CREATE BKASH PAYMENT
+// 2. API POST: CREATE OR RETRY BKASH PAYMENT
 export async function POST(request: NextRequest) {
   try {
     const supabase = createAdminClient()
+    const settings = await getStoreSettings()
     const body = await request.json()
+
+    // Branch 1: RETRY PAYMENT FOR EXISTING ORDER
+    if (body.action === 'retry' && body.order_id) {
+      const { data: existingOrder, error: fetchErr } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', body.order_id)
+        .single()
+
+      if (fetchErr || !existingOrder) {
+        return NextResponse.json({ error: 'Order not found for payment retry' }, { status: 404 })
+      }
+
+      const paymentAmount = existingOrder.payment_method === 'COD' 
+        ? existingOrder.delivery_charge 
+        : existingOrder.total_price
+
+      const BKASH_API_URL = settings.bkash_api_url || process.env.BKASH_API_URL || 'https://tokenized.sandbox.bka.sh/v1.2.0-beta'
+      const BKASH_APP_KEY = settings.bkash_app_key || process.env.BKASH_APP_KEY
+      const NEXT_PUBLIC_APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      const token = await getBkashToken()
+
+      const bkashResponse = await axios.post(`${BKASH_API_URL}/tokenized/checkout/create`, {
+        mode: '0011',
+        payerReference: existingOrder.customer_phone,
+        callbackURL: `${NEXT_PUBLIC_APP_URL}/api/bkash?order_id=${existingOrder.id}&method=${existingOrder.payment_method}&is_retry=true`,
+        amount: Number(paymentAmount).toFixed(2),
+        currency: 'BDT',
+        intent: 'sale',
+        merchantInvoiceNumber: existingOrder.id
+      }, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'x-app-key': BKASH_APP_KEY
+        }
+      })
+
+      if (bkashResponse.data?.bkashURL) {
+        return NextResponse.json({ 
+          checkoutUrl: bkashResponse.data.bkashURL, 
+          orderId: existingOrder.id 
+        })
+      }
+
+      return NextResponse.json({ error: 'Failed to generate bKash payment URL' }, { status: 500 })
+    }
+
+    // Branch 2: NEW ORDER CREATION
     const { 
       customer_name, 
       customer_phone, 
       customer_email, 
       shipping_address, 
-      city_id, 
-      zone_id, 
-      area_id, 
+      shipping_provider = settings.active_shipping_provider || 'pathao',
+      city_id = 0, 
+      zone_id = 0, 
+      area_id = 0, 
       city_name,
       zone_name,
       area_name,
       delivery_charge, 
       total_price, 
-      payment_method, // 'COD' or 'BKASH'
+      payment_method,
       cartItems 
     } = body
 
-    // Validate inputs
     if (!customer_name || !customer_phone || !shipping_address || !cartItems || cartItems.length === 0) {
       return NextResponse.json({ error: 'Missing required order details' }, { status: 400 })
     }
@@ -119,9 +122,10 @@ export async function POST(request: NextRequest) {
         customer_phone,
         customer_email,
         shipping_address,
-        city_id,
-        zone_id,
-        area_id,
+        shipping_provider,
+        city_id: Number(city_id || 0),
+        zone_id: Number(zone_id || 0),
+        area_id: Number(area_id || 0),
         delivery_charge,
         total_price,
         payment_method,
@@ -130,7 +134,8 @@ export async function POST(request: NextRequest) {
           shipping_metadata: {
             city_name,
             zone_name,
-            area_name
+            area_name,
+            shipping_provider
           }
         }
       })
@@ -160,13 +165,65 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create order items' }, { status: 500 })
     }
 
-    // Step C: Determine bKash payment amount
-    // If Cash on Delivery, the user prepays only the delivery charge.
-    // If Full Payment, the user prepays the total price (products + delivery).
+    // Step C: If COD and NO delivery charge prepayment is required by owner:
+    if (payment_method === 'COD' && !settings.cod_prepay_delivery) {
+      // Decrement stock directly for 100% Cash on Delivery
+      for (const item of cartItems) {
+        if (!item.id) continue
+        const { data: prod } = await supabase
+          .from('products')
+          .select('id, stock, variations')
+          .eq('id', item.id)
+          .single()
+
+        if (prod) {
+          let updatedVariations = prod.variations
+          if (updatedVariations && typeof updatedVariations === 'object' && Array.isArray(updatedVariations.options)) {
+            const selectedVar = item.selectedVariations as Record<string, string> || {}
+            updatedVariations.options = updatedVariations.options.map((opt: any) => {
+              const selectedVal = selectedVar[opt.name] || selectedVar[opt.name?.toLowerCase()]
+              if (selectedVal && Array.isArray(opt.values)) {
+                opt.values = opt.values.map((v: any) => {
+                  if (v.label === selectedVal && typeof v.stock === 'number') {
+                    v.stock = Math.max(0, v.stock - item.quantity)
+                  }
+                  return v
+                })
+              }
+              return opt
+            })
+
+            const primaryOpt = updatedVariations.options[0]
+            const totalStock = primaryOpt && Array.isArray(primaryOpt.values)
+              ? primaryOpt.values.reduce((sum: number, v: any) => sum + (Number(v.stock) || 0), 0)
+              : Math.max(0, prod.stock - item.quantity)
+
+            await supabase
+              .from('products')
+              .update({ stock: totalStock, variations: updatedVariations })
+              .eq('id', item.id)
+          } else {
+            await supabase.rpc('decrement_product_stock', {
+              prod_id: item.id,
+              qty: item.quantity
+            })
+          }
+        }
+      }
+
+      return NextResponse.json({
+        checkoutUrl: `/order/confirmation?order_id=${order.id}`,
+        orderId: order.id
+      })
+    }
+
+    // Step D: Determine bKash payment amount (delivery charge for COD with prepayment, full amount for BKASH)
     const paymentAmount = payment_method === 'COD' ? delivery_charge : total_price
 
-    // Step D: Create bKash Payment link
-    const { BKASH_API_URL, NEXT_PUBLIC_APP_URL, BKASH_APP_KEY } = process.env
+    // Step E: Create bKash Payment link
+    const BKASH_API_URL = settings.bkash_api_url || process.env.BKASH_API_URL || 'https://tokenized.sandbox.bka.sh/v1.2.0-beta'
+    const BKASH_APP_KEY = settings.bkash_app_key || process.env.BKASH_APP_KEY
+    const NEXT_PUBLIC_APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const token = await getBkashToken()
 
     const bkashResponse = await axios.post(`${BKASH_API_URL}/tokenized/checkout/create`, {
@@ -200,33 +257,33 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 4. API GET: BKASH REDIRECT CALLBACK & EXECUTE PAYMENT
+// 3. API GET: BKASH REDIRECT CALLBACK & EXECUTE PAYMENT
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const paymentID = searchParams.get('paymentID')
   const status = searchParams.get('status')
   const orderId = searchParams.get('order_id')
-  const method = searchParams.get('method') // 'COD' or 'BKASH'
+  const method = searchParams.get('method')
+  const isRetry = searchParams.get('is_retry') === 'true'
 
-  const { BKASH_API_URL, NEXT_PUBLIC_APP_URL, BKASH_APP_KEY } = process.env
+  const settings = await getStoreSettings()
+  const BKASH_API_URL = settings.bkash_api_url || process.env.BKASH_API_URL || 'https://tokenized.sandbox.bka.sh/v1.2.0-beta'
+  const BKASH_APP_KEY = settings.bkash_app_key || process.env.BKASH_APP_KEY
+  const NEXT_PUBLIC_APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   const supabase = createAdminClient()
 
   if (!orderId) {
     return NextResponse.redirect(`${NEXT_PUBLIC_APP_URL}/order/failed?error=MissingOrderId`)
   }
 
-  // Handle failure callbacks from bKash redirect
   if (status !== 'success' || !paymentID) {
-    // Update order status to Failed
     await supabase.from('orders').update({ payment_status: 'Failed' }).eq('id', orderId)
-    return NextResponse.redirect(`${NEXT_PUBLIC_APP_URL}/order/failed?order_id=${orderId}&reason=${status || 'PaymentCancelled'}`)
+    return NextResponse.redirect(`${NEXT_PUBLIC_APP_URL}/order/failed?order_id=${orderId}&reason=${status || 'PaymentCancelled'}&is_retry=${isRetry}`)
   }
 
   try {
-    // Step A: Grant Token for Executing Payment
     const token = await getBkashToken()
 
-    // Step B: Execute the Payment (Capture the cash)
     const executeResponse = await axios.post(`${BKASH_API_URL}/tokenized/checkout/execute`, {
       paymentID
     }, {
@@ -240,31 +297,38 @@ export async function GET(request: NextRequest) {
     const result = executeResponse.data
 
     if (result.statusCode === '0000' && result.transactionStatus === 'Completed') {
-      // Payment Successful!
       const paymentStatus = method === 'COD' ? 'DeliveryChargePrePaid' : 'FullyPaid'
 
-      // Step C: Fetch full order detail to construct Pathao consignment
       const { data: order } = await supabase
         .from('orders')
         .select('*')
         .eq('id', orderId)
         .single()
 
-      // Calculate COD amount to collect
-      // If COD method chosen, amount to collect is (Total Price - Delivery Charge) = Product Cost.
-      // If Full Prepayment, amount to collect is 0.
       const codAmount = method === 'COD' 
         ? Number(order.total_price) - Number(order.delivery_charge) 
         : 0
 
-      // Step D: Dispatch consignment to Pathao Courier
-      const consignmentId = await bookPathaoConsignment(order, codAmount)
+      const shippingProvider = order.shipping_provider || settings.active_shipping_provider || 'pathao'
+      let pathaoConsignmentId: string | null = null
+      let steadfastConsignmentId: string | null = null
+      let steadfastTrackingCode: string | null = null
 
-      // Step E: Update Order details with payment logs and tracking ID
+      if (shippingProvider === 'steadfast') {
+        const steadfastResult = await bookSteadfastConsignment(order, codAmount)
+        if (steadfastResult) {
+          steadfastConsignmentId = steadfastResult.consignment_id
+          steadfastTrackingCode = steadfastResult.tracking_code
+        }
+      } else {
+        pathaoConsignmentId = await bookPathaoConsignment(order, codAmount)
+      }
+
       await supabase
         .from('orders')
         .update({
           payment_status: paymentStatus,
+          shipping_provider: shippingProvider,
           payment_details: {
             ...(order.payment_details || {}),
             trx_id: result.trxID,
@@ -273,40 +337,80 @@ export async function GET(request: NextRequest) {
             customer_bkash_number: result.customerMsisdn,
             payload: result
           },
-          pathao_consignment_id: consignmentId,
-          pathao_status: consignmentId ? 'dispatched' : 'pending' // pending dispatch retry if API failed
+          pathao_consignment_id: pathaoConsignmentId,
+          pathao_status: (pathaoConsignmentId || steadfastConsignmentId) ? 'dispatched' : 'pending',
+          steadfast_consignment_id: steadfastConsignmentId,
+          steadfast_tracking_code: steadfastTrackingCode
         })
         .eq('id', orderId)
 
-      // Step F: Reduce stock count of products
+      // Decrement stock
       const { data: items } = await supabase
         .from('order_items')
-        .select('product_id, quantity')
+        .select('product_id, quantity, selected_variations')
         .eq('order_id', orderId)
 
       if (items) {
         for (const item of items) {
-          // Increment stock deduction
-          await supabase.rpc('decrement_product_stock', {
-            prod_id: item.product_id,
-            qty: item.quantity
-          })
+          if (!item.product_id) continue
+
+          const { data: prod } = await supabase
+            .from('products')
+            .select('id, stock, variations')
+            .eq('id', item.product_id)
+            .single()
+
+          if (prod) {
+            let updatedVariations = prod.variations
+
+            if (updatedVariations && typeof updatedVariations === 'object' && Array.isArray(updatedVariations.options)) {
+              const selectedVar = item.selected_variations as Record<string, string> || {}
+              updatedVariations.options = updatedVariations.options.map((opt: any) => {
+                const selectedVal = selectedVar[opt.name] || selectedVar[opt.name?.toLowerCase()]
+                if (selectedVal && Array.isArray(opt.values)) {
+                  opt.values = opt.values.map((v: any) => {
+                    if (v.label === selectedVal && typeof v.stock === 'number') {
+                      v.stock = Math.max(0, v.stock - item.quantity)
+                    }
+                    return v
+                  })
+                }
+                return opt
+              })
+
+              const primaryOpt = updatedVariations.options[0]
+              const totalStock = primaryOpt && Array.isArray(primaryOpt.values)
+                ? primaryOpt.values.reduce((sum: number, v: any) => sum + (Number(v.stock) || 0), 0)
+                : Math.max(0, prod.stock - item.quantity)
+
+              await supabase
+                .from('products')
+                .update({
+                  stock: totalStock,
+                  variations: updatedVariations
+                })
+                .eq('id', item.product_id)
+            } else {
+              await supabase.rpc('decrement_product_stock', {
+                prod_id: item.product_id,
+                qty: item.quantity
+              })
+            }
+          }
         }
       }
 
-      // Redirect to Order Success Page
       return NextResponse.redirect(`${NEXT_PUBLIC_APP_URL}/order/confirmation?order_id=${orderId}&trx_id=${result.trxID}`)
 
     } else {
-      // Payment execution failed or returned error status code
       console.error('bKash Execution Failure Status:', result)
       await supabase.from('orders').update({ payment_status: 'Failed', payment_details: result }).eq('id', orderId)
-      return NextResponse.redirect(`${NEXT_PUBLIC_APP_URL}/order/failed?order_id=${orderId}&reason=${result.statusMessage || 'ExecutionFailed'}`)
+      return NextResponse.redirect(`${NEXT_PUBLIC_APP_URL}/order/failed?order_id=${orderId}&reason=${result.statusMessage || 'ExecutionFailed'}&is_retry=${isRetry}`)
     }
 
   } catch (error: any) {
     console.error('bKash Execute Callback Exception:', error.message)
     await supabase.from('orders').update({ payment_status: 'Failed' }).eq('id', orderId)
-    return NextResponse.redirect(`${NEXT_PUBLIC_APP_URL}/order/failed?order_id=${orderId}&reason=ServerError`)
+    return NextResponse.redirect(`${NEXT_PUBLIC_APP_URL}/order/failed?order_id=${orderId}&reason=ServerError&is_retry=${isRetry}`)
   }
 }

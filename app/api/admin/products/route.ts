@@ -108,3 +108,40 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const userClient = await createClient()
+
+    const { data: { user } } = await userClient.auth.getUser()
+    const adminEmail = 'admin@example.com'
+    if (!user || (user.email !== adminEmail && !user.email?.includes('admin') && user.email !== 'sakib.samadhan@gmail.com')) {
+      return NextResponse.json({ error: 'Unauthorized access' }, { status: 403 })
+    }
+
+    const { id, is_hidden, is_featured } = await request.json()
+    if (!id) {
+      return NextResponse.json({ error: 'Product ID is required' }, { status: 400 })
+    }
+
+    const updatePayload: Record<string, any> = {}
+    if (is_hidden !== undefined) updatePayload.is_hidden = Boolean(is_hidden)
+    if (is_featured !== undefined) updatePayload.is_featured = Boolean(is_featured)
+
+    const adminDb = createAdminClient()
+    const { data, error } = await adminDb
+      .from('products')
+      .update(updatePayload)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, data })
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}

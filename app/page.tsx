@@ -7,29 +7,10 @@ export default async function HomePage() {
   const supabase = createAdminClient()
 
   // Fetch Categories
-  let { data: categories } = await supabase
+  const { data: categories } = await supabase
     .from('categories')
     .select('*')
     .order('name')
-
-  // Automatically seed Featured Products category if missing
-  const hasFeatured = categories?.some((c) => c.slug === 'featured')
-  if (!hasFeatured && categories) {
-    const { data: newCat } = await supabase
-      .from('categories')
-      .insert({
-        id: 'c0000000-0000-0000-0000-000000000008',
-        name: 'Featured Products',
-        slug: 'featured',
-        description: 'Special selection of featured products.'
-      })
-      .select()
-      .single()
-
-    if (newCat) {
-      categories = [...categories, newCat].sort((a, b) => a.name.localeCompare(b.name))
-    }
-  }
 
   // Fetch Products
   const { data: products } = await supabase
@@ -37,10 +18,38 @@ export default async function HomePage() {
     .select('*')
     .order('created_at', { ascending: false })
 
+  // Fetch non-cancelled order items for Best Seller & Trending calculations
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+
+  const { data: allTimeItems } = await supabase
+    .from('order_items')
+    .select('product_id, quantity, orders!inner(created_at, order_status)')
+    .neq('orders.order_status', 'Cancelled')
+
+  // Aggregate all-time quantities
+  const allTimeSales: Record<string, number> = {}
+  const last30DaysSales: Record<string, number> = {}
+
+  if (allTimeItems) {
+    allTimeItems.forEach((item: any) => {
+      const pid = item.product_id
+      const qty = Number(item.quantity || 1)
+      if (pid) {
+        allTimeSales[pid] = (allTimeSales[pid] || 0) + qty
+        if (item.orders?.created_at && new Date(item.orders.created_at) >= new Date(thirtyDaysAgo)) {
+          last30DaysSales[pid] = (last30DaysSales[pid] || 0) + qty
+        }
+      }
+    })
+  }
+
   return (
     <HomePageClient 
-      initialProducts={products || []} 
-      initialCategories={categories || []} 
+      products={products || []} 
+      categories={categories || []}
+      allTimeSales={allTimeSales}
+      last30DaysSales={last30DaysSales}
     />
   )
 }
+

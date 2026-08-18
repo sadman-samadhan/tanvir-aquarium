@@ -2,90 +2,126 @@
 
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ShoppingBag, ArrowLeft, Loader2, CreditCard, Truck, HelpCircle } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import {
+  ShoppingBag, Truck, ShieldCheck, ArrowLeft, Loader2,
+  MapPin, AlertCircle, CheckCircle2, CreditCard
+} from 'lucide-react'
 import Navbar from '@/components/Navbar'
+import CartDrawer from '@/components/CartDrawer'
 import { useCart } from '@/context/CartContext'
+import { useStore } from '@/context/StoreContext'
 import axios from 'axios'
 
-interface PathaoItem {
-  city_id?: number
-  city_name?: string
-  zone_id?: number
-  zone_name?: string
-  area_id?: number
-  area_name?: string
+interface City {
+  city_id: number
+  city_name: string
+}
+
+interface Zone {
+  zone_id: number
+  zone_name: string
+}
+
+interface Area {
+  area_id: number
+  area_name: string
 }
 
 export default function CheckoutPage() {
+  const router = useRouter()
   const { cartItems, cartTotal, clearCart } = useCart()
-  const [loading, setLoading] = useState(false)
-  const [cartDrawerOpen, setCartDrawerOpen] = useState(false)
+  const { settings } = useStore()
 
   // Form Fields
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
   const [shippingAddress, setShippingAddress] = useState('')
+  const [deliveryRegion, setDeliveryRegion] = useState<'inside_dhaka' | 'outside_dhaka'>('inside_dhaka')
 
   // Pathao Locations
-  const [cities, setCities] = useState<any[]>([])
-  const [zones, setZones] = useState<any[]>([])
-  const [areas, setAreas] = useState<any[]>([])
+  const [cities, setCities] = useState<City[]>([])
+  const [zones, setZones] = useState<Zone[]>([])
+  const [areas, setAreas] = useState<Area[]>([])
+  const [selectedCity, setSelectedCity] = useState<string>('')
+  const [selectedZone, setSelectedZone] = useState<string>('')
+  const [selectedArea, setSelectedArea] = useState<string>('')
 
-  const [selectedCity, setSelectedCity] = useState('')
-  const [selectedZone, setSelectedZone] = useState('')
-  const [selectedArea, setSelectedArea] = useState('')
+  // State Management
+  const isCodAllowed = settings.cod_enabled !== false
+  const isPureBkashAllowed = settings.bkash_enabled !== false
+  const requireDeliveryPrepay = isCodAllowed && settings.cod_prepay_delivery !== false
 
-  const [deliveryCharge, setDeliveryCharge] = useState(0)
-  const [paymentMethod, setPaymentMethod] = useState<'COD' | 'BKASH'>('COD')
+  const [deliveryCharge, setDeliveryCharge] = useState<number>(settings.delivery_charge_inside_dhaka || 60)
+  const [paymentMethod, setPaymentMethod] = useState<'COD' | 'BKASH'>(() => {
+    return isCodAllowed ? 'COD' : 'BKASH'
+  })
+  const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false)
 
-  // Fetch Cities on Mount
+  const isPathaoActive = settings.pathao_enabled === true
+  const isSteadfastActive = settings.steadfast_enabled === true
+  const defaultProvider = isPathaoActive ? 'pathao' : isSteadfastActive ? 'steadfast' : 'manual'
+
+  // Sync payment method if settings change
   useEffect(() => {
+    if (!isCodAllowed && isPureBkashAllowed) {
+      setPaymentMethod('BKASH')
+    } else if (isCodAllowed) {
+      setPaymentMethod('COD')
+    }
+  }, [isCodAllowed, isPureBkashAllowed])
+
+  // Update delivery charge for Simple Region mode (when Pathao is off)
+  useEffect(() => {
+    if (!isPathaoActive) {
+      const charge = deliveryRegion === 'inside_dhaka'
+        ? Number(settings.delivery_charge_inside_dhaka || 60)
+        : Number(settings.delivery_charge_outside_dhaka || 120)
+      setDeliveryCharge(charge)
+    }
+  }, [deliveryRegion, isPathaoActive, settings])
+
+  // Fetch Cities for Pathao on mount ONLY if Pathao is active
+  useEffect(() => {
+    if (!isPathaoActive) return
     async function loadCities() {
       try {
         const response = await axios.get('/api/pathao?action=cities')
-        setCities(response.data)
+        if (Array.isArray(response.data)) setCities(response.data)
       } catch (err) {
         console.error('Failed to load Pathao cities', err)
       }
     }
     loadCities()
-  }, [])
+  }, [isPathaoActive])
 
-  // Fetch Zones when City changes
+  // Fetch Zones for Pathao
   useEffect(() => {
-    if (!selectedCity) {
+    if (!isPathaoActive || !selectedCity) {
       setZones([])
       setAreas([])
       setSelectedZone('')
       setSelectedArea('')
-      setDeliveryCharge(0)
       return
     }
 
     async function loadZones() {
       try {
         const response = await axios.get(`/api/pathao?city_id=${selectedCity}`)
-        setZones(response.data)
+        if (Array.isArray(response.data)) setZones(response.data)
       } catch (err) {
         console.error('Failed to load zones', err)
       }
     }
-
     loadZones()
+  }, [isPathaoActive, selectedCity])
 
-    // Determine delivery charge:
-    // Usually City ID 1 is Dhaka City, which costs ৳60. Others cost ৳120.
-    // Let's assume city_id 1 is Dhaka City (inside Dhaka).
-    const isDhaka = Number(selectedCity) === 1 || selectedCity === '1'
-    setDeliveryCharge(isDhaka ? 60 : 120)
-
-  }, [selectedCity])
-
-  // Fetch Areas when Zone changes
+  // Fetch Areas for Pathao
   useEffect(() => {
-    if (!selectedZone) {
+    if (!isPathaoActive || !selectedZone) {
       setAreas([])
       setSelectedArea('')
       return
@@ -94,32 +130,55 @@ export default function CheckoutPage() {
     async function loadAreas() {
       try {
         const response = await axios.get(`/api/pathao?zone_id=${selectedZone}`)
-        setAreas(response.data)
+        if (Array.isArray(response.data)) setAreas(response.data)
       } catch (err) {
         console.error('Failed to load areas', err)
       }
     }
     loadAreas()
-  }, [selectedZone])
+  }, [isPathaoActive, selectedZone])
 
+  // Update Pathao dynamic delivery charge when city changes
+  useEffect(() => {
+    if (!isPathaoActive) return
+    if (!selectedCity) {
+      setDeliveryCharge(settings.delivery_charge_inside_dhaka || 60)
+      return
+    }
+
+    // City ID 1 in Pathao is Dhaka
+    if (String(selectedCity) === '1') {
+      setDeliveryCharge(settings.delivery_charge_inside_dhaka || 60)
+    } else {
+      setDeliveryCharge(settings.delivery_charge_outside_dhaka || 120)
+    }
+  }, [isPathaoActive, selectedCity, settings])
+
+  // Form Submit Handler
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMessage('')
 
-    // Basic Validation
-    if (!customerName || !customerPhone || !shippingAddress || !selectedCity || !selectedZone || !selectedArea) {
-      setErrorMessage('Please fill in all the required fields.')
+    if (!customerName.trim() || !customerPhone.trim() || !shippingAddress.trim()) {
+      setErrorMessage('Please fill in all the required customer details.')
       return
     }
 
     if (customerPhone.length < 11) {
-      setErrorMessage('Please enter a valid 11-digit mobile number.')
+      setErrorMessage('Please enter a valid 11-digit mobile number (e.g. 017XXXXXXXX).')
       return
     }
 
-    if (shippingAddress.trim().length < 10) {
-      setErrorMessage('Address must be at least 10 characters long (required for courier delivery).')
+    if (shippingAddress.trim().length < 6) {
+      setErrorMessage('Please provide a complete delivery address.')
       return
+    }
+
+    if (isPathaoActive) {
+      if (!selectedCity || !selectedZone || !selectedArea) {
+        setErrorMessage('Please select your City, Zone, and Area for Pathao delivery.')
+        return
+      }
     }
 
     if (cartItems.length === 0) {
@@ -130,33 +189,40 @@ export default function CheckoutPage() {
     setLoading(true)
 
     try {
-      const cityName = cities.find((c) => String(c.city_id) === String(selectedCity))?.city_name || ''
-      const zoneName = zones.find((z) => String(z.zone_id) === String(selectedZone))?.zone_name || ''
-      const areaName = areas.find((a) => String(a.area_id) === String(selectedArea))?.area_name || ''
+      let cityName = ''
+      let zoneName = ''
+      let areaName = ''
+
+      if (isPathaoActive) {
+        cityName = cities.find((c) => String(c.city_id) === String(selectedCity))?.city_name || ''
+        zoneName = zones.find((z) => String(z.zone_id) === String(selectedZone))?.zone_name || ''
+        areaName = areas.find((a) => String(a.area_id) === String(selectedArea))?.area_name || ''
+      } else {
+        cityName = deliveryRegion === 'inside_dhaka' ? 'Dhaka' : 'Outside Dhaka'
+      }
 
       const payload = {
         customer_name: customerName,
         customer_phone: customerPhone,
         customer_email: customerEmail || null,
         shipping_address: shippingAddress,
-        city_id: Number(selectedCity),
-        zone_id: Number(selectedZone),
-        area_id: Number(selectedArea),
+        shipping_provider: defaultProvider,
+        city_id: Number(selectedCity || (deliveryRegion === 'inside_dhaka' ? 1 : 2)),
+        zone_id: Number(selectedZone || 1),
+        area_id: Number(selectedArea || 1),
         city_name: cityName,
         zone_name: zoneName,
         area_name: areaName,
         delivery_charge: deliveryCharge,
         total_price: cartTotal + deliveryCharge,
-        payment_method: paymentMethod, // 'COD' or 'BKASH'
+        payment_method: paymentMethod,
         cartItems: cartItems
       }
 
       const response = await axios.post('/api/bkash', payload)
 
       if (response.data?.checkoutUrl) {
-        // Clear local cart storage, payment is in progress
         clearCart()
-        // Redirect user to secure bKash checkout portal
         window.location.href = response.data.checkoutUrl
       } else {
         throw new Error('Failed to fetch payment portal link')
@@ -172,326 +238,352 @@ export default function CheckoutPage() {
     <div className="flex flex-col min-h-screen bg-slate-50 text-slate-800">
       <Navbar onCartToggle={() => setCartDrawerOpen(true)} />
 
-      <main className="flex-grow mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
+      <main className="flex-grow mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 w-full">
         <div className="flex items-center gap-2 mb-8">
-          <Link href="/" className="text-sm font-semibold text-emerald-600 hover:text-emerald-500 flex items-center gap-1">
+          <Link href="/" className="text-xs font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1">
             <ArrowLeft className="h-4 w-4" /> Back to Store
           </Link>
         </div>
 
-        <h1 className="text-3xl font-extrabold text-slate-950 mb-8 tracking-tight">Checkout Order</h1>
-
         {cartItems.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-lg border border-slate-200 shadow-sm">
-            <ShoppingBag className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-            <p className="text-lg font-medium text-slate-900">Your cart is empty</p>
-            <p className="mt-1 text-sm text-slate-500">Go back and select some items to check out.</p>
-            <Link href="/" className="mt-6 inline-block rounded-md bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 transition">
-              Back to Catalog
+          <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-300 max-w-md mx-auto shadow-sm">
+            <ShoppingBag className="h-12 w-12 text-slate-300 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-slate-900">Your Cart is Empty</h2>
+            <p className="mt-1 text-xs text-slate-500">Please add items to your cart before proceeding to checkout.</p>
+            <Link
+              href="/"
+              className="mt-6 inline-block rounded-xl bg-brand-600 px-6 py-2.5 text-xs font-bold text-white shadow-md hover:bg-brand-500 transition"
+            >
+              Browse Catalog
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            
-            {/* Left side: Billing Address & Location selector */}
-            <form onSubmit={handlePlaceOrder} className="lg:col-span-7 space-y-6">
-              
-              {/* Billing Information Section */}
-              <div className="bg-white rounded-lg border border-slate-200 p-6 shadow-sm space-y-4">
-                <h2 className="text-lg font-bold text-slate-950 flex items-center gap-2 pb-3 border-b border-slate-100">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 text-xs font-bold">1</span>
-                  Recipient Details
-                </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* LEFT: CHECKOUT FORM */}
+            <div className="lg:col-span-7 space-y-8">
+              <form onSubmit={handlePlaceOrder} className="space-y-8">
+
+                {/* 1. CUSTOMER CONTACT */}
+                <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-50 text-brand-600 text-xs font-bold">1</span>
+                    <h2 className="text-sm font-bold text-slate-950 uppercase tracking-wide">Customer Contact Information</h2>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600 uppercase">Full Name *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="John Doe"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600 uppercase">Phone Number *</label>
+                      <input
+                        type="tel"
+                        required
+                        placeholder="017XXXXXXXX"
+                        value={customerPhone}
+                        onChange={(e) => setCustomerPhone(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 transition-all"
+                      />
+                    </div>
+                  </div>
+
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                      Full Name *
-                    </label>
+                    <label className="text-xs font-semibold text-slate-600 uppercase">Email Address (Optional for Invoice)</label>
                     <input
-                      type="text"
-                      required
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="e.g. Abir Rahman"
-                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                      type="email"
+                      placeholder="customer@example.com"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 transition-all"
                     />
                   </div>
+                </div>
 
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                      Mobile Number (11 digits) *
-                    </label>
-                    <input
-                      type="tel"
+                {/* 2. SHIPPING ADDRESS (Adaptive Provider UI) */}
+                <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-50 text-brand-600 text-xs font-bold">2</span>
+                    <h2 className="text-sm font-bold text-slate-950 uppercase tracking-wide">
+                      Delivery Destination
+                    </h2>
+                  </div>
+
+                  {/* If Pathao is OFF: Simple Region Selector */}
+                  {!isPathaoActive ? (
+                    <div className="space-y-3">
+                      <label className="text-xs font-semibold text-slate-600 uppercase block">Select Delivery Location *</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label className={`flex items-center justify-between p-3.5 rounded-xl border-2 cursor-pointer transition ${deliveryRegion === 'inside_dhaka'
+                          ? 'border-brand-600 bg-brand-50/40 ring-2 ring-brand-500/10'
+                          : 'border-slate-200 hover:border-slate-300'
+                          }`}>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="deliveryRegion"
+                              checked={deliveryRegion === 'inside_dhaka'}
+                              onChange={() => setDeliveryRegion('inside_dhaka')}
+                              className="text-brand-600"
+                            />
+                            <span className="text-xs font-bold text-slate-900">Inside Dhaka City</span>
+                          </div>
+                          <span className="text-xs font-black text-brand-700">৳{settings.delivery_charge_inside_dhaka}</span>
+                        </label>
+
+                        <label className={`flex items-center justify-between p-3.5 rounded-xl border-2 cursor-pointer transition ${deliveryRegion === 'outside_dhaka'
+                          ? 'border-brand-600 bg-brand-50/40 ring-2 ring-brand-500/10'
+                          : 'border-slate-200 hover:border-slate-300'
+                          }`}>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="deliveryRegion"
+                              checked={deliveryRegion === 'outside_dhaka'}
+                              onChange={() => setDeliveryRegion('outside_dhaka')}
+                              className="text-brand-600"
+                            />
+                            <span className="text-xs font-bold text-slate-900">Outside Dhaka (All BD)</span>
+                          </div>
+                          <span className="text-xs font-black text-brand-700">৳{settings.delivery_charge_outside_dhaka}</span>
+                        </label>
+                      </div>
+                    </div>
+                  ) : (
+                    /* If Pathao: Cascading Dropdowns */
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-600 uppercase">City *</label>
+                        <select
+                          value={selectedCity}
+                          onChange={(e) => setSelectedCity(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2.5 text-xs outline-none focus:border-brand-500"
+                        >
+                          <option value="">Select City</option>
+                          {cities.map((city) => (
+                            <option key={city.city_id} value={city.city_id}>{city.city_name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-600 uppercase">Zone *</label>
+                        <select
+                          disabled={!selectedCity || zones.length === 0}
+                          value={selectedZone}
+                          onChange={(e) => setSelectedZone(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2.5 text-xs outline-none disabled:bg-slate-50 focus:border-brand-500"
+                        >
+                          <option value="">Select Zone</option>
+                          {zones.map((zone) => (
+                            <option key={zone.zone_id} value={zone.zone_id}>{zone.zone_name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-600 uppercase">Area *</label>
+                        <select
+                          disabled={!selectedZone || areas.length === 0}
+                          value={selectedArea}
+                          onChange={(e) => setSelectedArea(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2.5 text-xs outline-none disabled:bg-slate-50 focus:border-brand-500"
+                        >
+                          <option value="">Select Area</option>
+                          {areas.map((area) => (
+                            <option key={area.area_id} value={area.area_id}>{area.area_name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-1 pt-2">
+                    <label className="text-xs font-semibold text-slate-600 uppercase">Detailed Delivery Address *</label>
+                    <textarea
+                      rows={2}
                       required
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
-                      placeholder="e.g. 01712345678"
-                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                      placeholder="House No, Road No, Flat / Floor, Landmark..."
+                      value={shippingAddress}
+                      onChange={(e) => setShippingAddress(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 transition-all"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    Email Address (Optional)
-                  </label>
-                  <input
-                    type="email"
-                    value={customerEmail}
-                    onChange={(e) => setCustomerEmail(e.target.value)}
-                    placeholder="e.g. abir@example.com"
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
-                  />
-                </div>
-              </div>
-
-              {/* Delivery Destination Section */}
-              <div className="bg-white rounded-lg border border-slate-200 p-6 shadow-sm space-y-4">
-                <h2 className="text-lg font-bold text-slate-950 flex items-center gap-2 pb-3 border-b border-slate-100">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 text-xs font-bold">2</span>
-                  Delivery Address (Pathao Courier)
-                </h2>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  
-                  {/* City dropdown */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">City *</label>
-                    <select
-                      required
-                      value={selectedCity}
-                      onChange={(e) => setSelectedCity(e.target.value)}
-                      className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
-                    >
-                      <option value="">Select City</option>
-                      {cities.map((city) => (
-                        <option key={city.city_id} value={city.city_id}>
-                          {city.city_name}
-                        </option>
-                      ))}
-                    </select>
+                {/* 3. PAYMENT METHOD */}
+                <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-50 text-brand-600 text-xs font-bold">3</span>
+                    <h2 className="text-sm font-bold text-slate-950 uppercase tracking-wide">Select Payment Method</h2>
                   </div>
 
-                  {/* Zone dropdown */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Zone *</label>
-                    <select
-                      required
-                      disabled={!selectedCity}
-                      value={selectedZone}
-                      onChange={(e) => setSelectedZone(e.target.value)}
-                      className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm outline-none disabled:bg-slate-50 disabled:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
-                    >
-                      <option value="">Select Zone</option>
-                      {zones.map((zone) => (
-                        <option key={zone.zone_id} value={zone.zone_id}>
-                          {zone.zone_name}
-                        </option>
-                      ))}
-                    </select>
+                  <div className={`grid gap-4 ${isCodAllowed && isPureBkashAllowed ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+                    {/* COD Option */}
+                    {isCodAllowed && (
+                      <label className={`flex flex-col p-4 rounded-xl border-2 cursor-pointer transition ${paymentMethod === 'COD'
+                        ? 'border-brand-600 bg-brand-50/30 ring-2 ring-brand-500/10'
+                        : 'border-slate-200 hover:border-slate-300'
+                        }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="paymentMethod"
+                              checked={paymentMethod === 'COD'}
+                              onChange={() => setPaymentMethod('COD')}
+                              className="text-brand-600"
+                            />
+                            <span className="text-xs font-bold text-slate-900">Cash on Delivery (COD)</span>
+                          </div>
+                          <Truck className="h-4 w-4 text-slate-400" />
+                        </div>
+                        <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
+                          {requireDeliveryPrepay ? (
+                            <>
+                              Pay delivery charge (<strong>৳{deliveryCharge}</strong>) upfront via bKash to confirm order. Pay product balance (<strong>৳{cartTotal.toLocaleString()}</strong>) upon doorstep arrival.
+                            </>
+                          ) : (
+                            <>
+                              100% Cash on Delivery. Pay full amount (<strong>৳{(cartTotal + deliveryCharge).toLocaleString()}</strong>) at your doorstep when you receive the parcel.
+                            </>
+                          )}
+                        </p>
+                      </label>
+                    )}
+
+                    {/* bKash Full Payment */}
+                    {isPureBkashAllowed && (
+                      <label className={`flex flex-col p-4 rounded-xl border-2 cursor-pointer transition ${paymentMethod === 'BKASH'
+                        ? 'border-brand-600 bg-brand-50/30 ring-2 ring-brand-500/10'
+                        : 'border-slate-200 hover:border-slate-300'
+                        }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="paymentMethod"
+                              checked={paymentMethod === 'BKASH'}
+                              onChange={() => setPaymentMethod('BKASH')}
+                              className="text-brand-600"
+                            />
+                            <span className="text-xs font-bold text-slate-900">Full Online Payment (bKash)</span>
+                          </div>
+                          <CreditCard className="h-4 w-4 text-pink-600" />
+                        </div>
+                        <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
+                          Pay the complete order amount (<strong>৳{(cartTotal + deliveryCharge).toLocaleString()}</strong>) now securely via official bKash Tokenized portal.
+                        </p>
+                      </label>
+                    )}
                   </div>
-
-                  {/* Area dropdown */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Area *</label>
-                    <select
-                      required
-                      disabled={!selectedZone}
-                      value={selectedArea}
-                      onChange={(e) => setSelectedArea(e.target.value)}
-                      className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm outline-none disabled:bg-slate-50 disabled:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
-                    >
-                      <option value="">Select Area</option>
-                      {areas.map((area) => (
-                        <option key={area.area_id} value={area.area_id}>
-                          {area.area_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    Street Address & House details *
-                  </label>
-                  <textarea
-                    required
-                    minLength={10}
-                    rows={3}
-                    value={shippingAddress}
-                    onChange={(e) => setShippingAddress(e.target.value)}
-                    placeholder="House number, Road, Village/Sector details (Min 10 characters)..."
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
-                  />
-                  <span className="text-[10px] text-slate-400 block mt-1">
-                    Note: Address must be at least 10 characters long (required by Pathao Courier).
-                  </span>
-                </div>
-              </div>
-
-              {/* Payment Method Selector Section */}
-              <div className="bg-white rounded-lg border border-slate-200 p-6 shadow-sm space-y-4">
-                <h2 className="text-lg font-bold text-slate-950 flex items-center gap-2 pb-3 border-b border-slate-100">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 text-xs font-bold">3</span>
-                  Payment Option
-                </h2>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  
-                  {/* COD (Prepay Shipping fee) */}
-                  <label className={`relative flex flex-col border rounded-lg p-4 cursor-pointer hover:bg-slate-50 transition ${
-                    paymentMethod === 'COD' ? 'border-emerald-500 ring-2 ring-emerald-500/10 bg-emerald-50/20' : 'border-slate-200'
-                  }`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <input
-                        type="radio"
-                        name="payment_choice"
-                        value="COD"
-                        checked={paymentMethod === 'COD'}
-                        onChange={() => setPaymentMethod('COD')}
-                        className="h-4 w-4 text-emerald-600 border-slate-300 focus:ring-emerald-500"
-                      />
-                      <span className="text-sm font-bold text-slate-900 flex items-center gap-1">
-                        <Truck className="h-4 w-4 text-slate-500" /> Cash on Delivery
-                      </span>
-                    </div>
-                    <span className="text-xs text-slate-500 leading-relaxed">
-                      Prepay shipping fee of **৳{deliveryCharge || 120}** via bKash now. The product price (**৳{cartTotal.toLocaleString()}**) is paid upon delivery.
-                    </span>
-                  </label>
-
-                  {/* Full Payment */}
-                  <label className={`relative flex flex-col border rounded-lg p-4 cursor-pointer hover:bg-slate-50 transition ${
-                    paymentMethod === 'BKASH' ? 'border-emerald-500 ring-2 ring-emerald-500/10 bg-emerald-50/20' : 'border-slate-200'
-                  }`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <input
-                        type="radio"
-                        name="payment_choice"
-                        value="BKASH"
-                        checked={paymentMethod === 'BKASH'}
-                        onChange={() => setPaymentMethod('BKASH')}
-                        className="h-4 w-4 text-emerald-600 border-slate-300 focus:ring-emerald-500"
-                      />
-                      <span className="text-sm font-bold text-slate-900 flex items-center gap-1">
-                        <CreditCard className="h-4 w-4 text-slate-500" /> Full Prepaid bKash
-                      </span>
-                    </div>
-                    <span className="text-xs text-slate-500 leading-relaxed">
-                      Pay the complete amount (**৳{(cartTotal + deliveryCharge).toLocaleString()}**) upfront via bKash checkout. COD will be set to ৳0.
-                    </span>
-                  </label>
-
                 </div>
 
                 {errorMessage && (
-                  <p className="text-xs font-semibold text-red-500 pt-2">{errorMessage}</p>
-                )}
-
-                {/* Confirm Pay Button */}
-                <div className="pt-4">
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-6 py-3.5 text-base font-bold text-white shadow-sm hover:bg-emerald-500 disabled:bg-slate-400 transition-all duration-200 h-14"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        Redirecting to bKash...
-                      </>
-                    ) : (
-                      <>
-                        <span>Confirm & Pay ৳{paymentMethod === 'COD' ? deliveryCharge : cartTotal + deliveryCharge} via bKash</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-              
-            </form>
-
-            {/* Right side: Cart Summary review panel */}
-            <div className="lg:col-span-5 bg-white rounded-lg border border-slate-200 p-6 shadow-sm space-y-6">
-              <h2 className="text-lg font-bold text-slate-950 pb-3 border-b border-slate-100">
-                Order Summary
-              </h2>
-
-              <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto pr-2">
-                {cartItems.map((item) => (
-                  <div key={`${item.id}-${JSON.stringify(item.selectedVariations)}`} className="flex py-3 gap-3">
-                    <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded border border-slate-200">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={item.image} alt="" className="h-full w-full object-cover" />
-                    </div>
-                    <div className="flex-grow min-w-0">
-                      <p className="text-xs font-semibold text-slate-900 line-clamp-1">{item.name}</p>
-                      <p className="text-[10px] text-slate-500">Qty: {item.quantity}</p>
-                      {Object.entries(item.selectedVariations).map(([k, v]) => (
-                        <p key={k} className="text-[10px] text-slate-400 capitalize">{k}: {v}</p>
-                      ))}
-                    </div>
-                    <span className="text-xs font-bold text-slate-950">৳{(item.price * item.quantity).toLocaleString()}</span>
+                  <div className="flex items-center gap-2 p-4 bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-semibold">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    <span>{errorMessage}</span>
                   </div>
-                ))}
-              </div>
-
-              {/* Subtotal listings */}
-              <div className="border-t border-slate-200 pt-4 space-y-2 text-xs">
-                <div className="flex justify-between font-medium">
-                  <span className="text-slate-500">Subtotal</span>
-                  <span className="text-slate-800 font-semibold">৳{cartTotal.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between font-medium">
-                  <span className="text-slate-500 font-medium">Pathao Delivery</span>
-                  <span className="text-slate-800 font-semibold">
-                    {deliveryCharge > 0 ? `৳${deliveryCharge}` : 'Select City to calculate'}
-                  </span>
-                </div>
-                
-                <div className="border-t border-slate-100 pt-2 flex justify-between text-sm font-bold text-slate-950">
-                  <span>Grand Total</span>
-                  <span>৳{(cartTotal + deliveryCharge).toLocaleString()}</span>
-                </div>
-              </div>
-
-              {/* Breakdown message depending on Payment Method */}
-              <div className="bg-slate-50 rounded-md border border-slate-200 p-4 space-y-2 text-xs text-slate-600">
-                {paymentMethod === 'COD' ? (
-                  <>
-                    <p className="font-bold text-slate-800">Payment Breakdown (COD Path):</p>
-                    <div className="flex justify-between">
-                      <span>Prepaid via bKash Now (Delivery fee):</span>
-                      <span className="font-bold text-emerald-600">৳{deliveryCharge}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Cash on Delivery (Remaining product cost):</span>
-                      <span className="font-bold text-slate-900">৳{cartTotal.toLocaleString()}</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-bold text-slate-800">Payment Breakdown (Full Prepay):</p>
-                    <div className="flex justify-between">
-                      <span>Prepaid via bKash Now (Full order):</span>
-                      <span className="font-bold text-emerald-600">৳{(cartTotal + deliveryCharge).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Cash on Delivery (At doorstep):</span>
-                      <span className="font-bold text-slate-900">৳0</span>
-                    </div>
-                  </>
                 )}
-              </div>
 
+                {/* SUBMIT BUTTON */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-4 text-base font-bold text-white shadow-xl hover:bg-brand-500 disabled:bg-slate-400 transition-all duration-200 h-14"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>
+                        {paymentMethod === 'COD' && !requireDeliveryPrepay
+                          ? 'Placing Order...'
+                          : 'Connecting to bKash Gateway...'
+                        }
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="h-5 w-5" />
+                      <span>
+                        {paymentMethod === 'COD'
+                          ? requireDeliveryPrepay
+                            ? `Pay Advance Delivery Fee ৳${deliveryCharge} via bKash & Confirm Order`
+                            : `Confirm & Place Order (৳${(cartTotal + deliveryCharge).toLocaleString()} Due on Delivery)`
+                          : `Pay Total ৳${(cartTotal + deliveryCharge).toLocaleString()} via bKash`
+                        }
+                      </span>
+                    </>
+                  )}
+                </button>
+
+              </form>
+            </div>
+
+            {/* RIGHT: ORDER SUMMARY */}
+            <div className="lg:col-span-5">
+              <div className="sticky top-24 bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <h3 className="text-base font-bold text-slate-950 pb-3 border-b border-slate-100">
+                  Order Summary ({cartItems.reduce((s, i) => s + i.quantity, 0)} items)
+                </h3>
+
+                {/* Items List */}
+                <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto pr-1">
+                  {cartItems.map((item) => (
+                    <div key={`${item.id}-${JSON.stringify(item.selectedVariations)}`} className="py-3 flex gap-3">
+                      <div className="h-12 w-12 flex-shrink-0 rounded-lg bg-slate-100 overflow-hidden border border-slate-200">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={item.image} alt="" className="h-full w-full object-cover" />
+                      </div>
+                      <div className="flex-1 text-xs">
+                        <p className="font-bold text-slate-900 line-clamp-1">{item.name}</p>
+                        {Object.entries(item.selectedVariations).map(([k, v]) => (
+                          <span key={k} className="text-[10px] text-slate-400 block">{k}: {v}</span>
+                        ))}
+                        <p className="text-slate-500 mt-0.5">Qty: {item.quantity} × ৳{item.price.toLocaleString()}</p>
+                      </div>
+                      <span className="text-xs font-bold text-slate-900">৳{(item.price * item.quantity).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Pricing Summary */}
+                <div className="space-y-2 pt-3 border-t border-slate-100 text-xs font-medium text-slate-600">
+                  <div className="flex justify-between">
+                    <span>Products Subtotal</span>
+                    <span className="font-bold text-slate-900">৳{cartTotal.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Delivery Charge {isPathaoActive ? '(Pathao)' : isSteadfastActive ? '(Steadfast)' : '(Standard)'}</span>
+                    <span className="font-bold text-brand-700">৳{deliveryCharge}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-black text-slate-950 pt-2 border-t border-slate-100">
+                    <span>Total Order Amount</span>
+                    <span className="text-base text-brand-700">৳{(cartTotal + deliveryCharge).toLocaleString()}</span>
+                  </div>
+                </div>
+
+                {/* Security Note */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-2 text-[11px] text-slate-500">
+                  <CheckCircle2 className="h-4 w-4 text-brand-600 flex-shrink-0" />
+                  <span>Secure automated bKash tokenized gateway checkout.</span>
+                </div>
+              </div>
             </div>
 
           </div>
         )}
       </main>
+
+      <CartDrawer isOpen={cartDrawerOpen} onClose={() => setCartDrawerOpen(false)} />
     </div>
   )
 }
