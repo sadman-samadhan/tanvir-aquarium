@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createAdminClient } from '@/utils/supabase/server'
+import { createAdminClient } from '@/utils/supabase/server'
+import { verifyStaffAuth } from '@/utils/auth'
 
 export const dynamic = 'force-dynamic'
 
 export async function PUT(request: NextRequest) {
   try {
-    const userClient = await createClient()
-
-    // Check if user is authenticated and is admin
-    const { data: { user } } = await userClient.auth.getUser()
-    const adminEmail = 'admin@example.com'
-    if (!user || (user.email !== adminEmail && !user.email?.includes('admin') && user.email !== 'sakib.samadhan@gmail.com')) {
-      return NextResponse.json({ error: 'Unauthorized access' }, { status: 403 })
+    const auth = await verifyStaffAuth(['shop_owner', 'admin', 'staff'])
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
     const body = await request.json()
@@ -156,13 +153,9 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const userClient = await createClient()
-
-    // Check if user is authenticated and is admin
-    const { data: { user } } = await userClient.auth.getUser()
-    const adminEmail = 'admin@example.com'
-    if (!user || (user.email !== adminEmail && !user.email?.includes('admin') && user.email !== 'sakib.samadhan@gmail.com')) {
-      return NextResponse.json({ error: 'Unauthorized access' }, { status: 403 })
+    const auth = await verifyStaffAuth(['shop_owner', 'admin', 'staff'])
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
     const { searchParams } = new URL(request.url)
