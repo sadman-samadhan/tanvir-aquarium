@@ -12,6 +12,18 @@ export async function GET(request: NextRequest) {
   const settings = await getStoreSettings()
   const pathao_api_url = settings.pathao_api_url || process.env.PATHAO_API_URL || 'https://courier-api-sandbox.pathao.com'
 
+  const pathao_client_id = settings.pathao_client_id || process.env.PATHAO_CLIENT_ID
+  const pathao_client_secret = settings.pathao_client_secret || process.env.PATHAO_CLIENT_SECRET
+  const pathao_username = settings.pathao_username || process.env.PATHAO_USERNAME
+  const pathao_password = settings.pathao_password || process.env.PATHAO_PASSWORD
+
+  if (!pathao_client_id || !pathao_client_secret || !pathao_username || !pathao_password) {
+    if (action === 'cities' || cityId || zoneId) {
+      return NextResponse.json([])
+    }
+    return NextResponse.json({ error: 'Pathao credentials not configured' }, { status: 400 })
+  }
+
   try {
     const token = await getPathaoToken()
     const headers = {
@@ -37,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 })
   } catch (error: any) {
-    console.error('Pathao Fetch Error:', error.response?.data || error.message)
-    return NextResponse.json({ error: error.message || 'Failed to fetch Pathao location data' }, { status: 500 })
+    console.warn('Pathao Fetch Notice:', error.response?.data?.message || error.message)
+    return NextResponse.json([])
   }
 }

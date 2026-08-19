@@ -134,7 +134,7 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   pathao_store_id: process.env.PATHAO_STORE_ID || '',
   steadfast_api_key: process.env.STEADFAST_API_KEY || '',
   steadfast_secret_key: process.env.STEADFAST_SECRET_KEY || '',
-  steadfast_base_url: process.env.STEADFAST_BASE_URL || 'https://portal.steadfast.com.bd/api/v1',
+  steadfast_base_url: process.env.STEADFAST_BASE_URL || 'https://portal.packzy.com/api/v1',
   delivery_charge_inside_dhaka: 60,
   delivery_charge_outside_dhaka: 120,
   about_enabled: true,
@@ -188,6 +188,9 @@ export async function getStoreSettings(forceFresh = false): Promise<StoreSetting
       bkash_enabled: data.bkash_enabled !== undefined ? Boolean(data.bkash_enabled) : DEFAULT_SETTINGS.bkash_enabled,
       pathao_enabled: data.pathao_enabled !== undefined ? Boolean(data.pathao_enabled) : DEFAULT_SETTINGS.pathao_enabled,
       steadfast_enabled: data.steadfast_enabled !== undefined ? Boolean(data.steadfast_enabled) : DEFAULT_SETTINGS.steadfast_enabled,
+      steadfast_base_url: (!data.steadfast_base_url || data.steadfast_base_url.includes('portal.steadfast.com.bd'))
+        ? 'https://portal.packzy.com/api/v1'
+        : data.steadfast_base_url,
       delivery_charge_inside_dhaka: Number(data.delivery_charge_inside_dhaka ?? DEFAULT_SETTINGS.delivery_charge_inside_dhaka),
       delivery_charge_outside_dhaka: Number(data.delivery_charge_outside_dhaka ?? DEFAULT_SETTINGS.delivery_charge_outside_dhaka),
       about_enabled: data.about_enabled !== undefined ? Boolean(data.about_enabled) : DEFAULT_SETTINGS.about_enabled,

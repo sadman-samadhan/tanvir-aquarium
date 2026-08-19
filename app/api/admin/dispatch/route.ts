@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     // Steadfast Courier Dispatch
     if (shippingProvider === 'steadfast') {
       const steadfastResult = await bookSteadfastConsignment(order, codAmount)
-      if (steadfastResult) {
+      if (steadfastResult.success && steadfastResult.consignment_id) {
         await adminDb
           .from('orders')
           .update({
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
         })
       } else {
         return NextResponse.json(
-          { error: 'Steadfast booking failed. Verify API Key and Secret Key in Settings.' },
+          { error: steadfastResult.error || 'Steadfast booking failed. Verify API Key and Secret Key in Settings.' },
           { status: 400 }
         )
       }

@@ -98,23 +98,49 @@ export async function bookPathaoConsignment(order: any, codAmount: number): Prom
 // ==========================================
 // 2. STEADFAST COURIER HELPERS
 // ==========================================
-export async function bookSteadfastConsignment(order: any, codAmount: number) {
+export interface SteadfastBookingResult {
+  success: boolean
+  consignment_id?: string
+  tracking_code?: string
+  status?: string
+  error?: string
+}
+
+export async function bookSteadfastConsignment(order: any, codAmount: number): Promise<SteadfastBookingResult> {
   const settings = await getStoreSettings()
-  const { steadfast_api_key, steadfast_secret_key, steadfast_base_url } = settings
+  const steadfast_api_key = settings.steadfast_api_key?.trim()
+  const steadfast_secret_key = settings.steadfast_secret_key?.trim()
+  const steadfast_base_url = settings.steadfast_base_url?.trim()
 
   if (!steadfast_api_key || !steadfast_secret_key) {
     console.warn('Steadfast credentials not configured in settings')
-    return null
+    return {
+      success: false,
+      error: 'Steadfast Api-Key and Secret-Key are not configured in Admin Settings.'
+    }
   }
 
-  const baseUrl = steadfast_base_url?.replace(/\/$/, '') || 'https://portal.steadfast.com.bd/api/v1'
+  let baseUrl = (steadfast_base_url || '').trim()
+  if (!baseUrl || baseUrl.includes('portal.steadfast.com.bd')) {
+    baseUrl = 'https://portal.packzy.com/api/v1'
+  }
+  baseUrl = baseUrl.replace(/\/$/, '')
   const invoiceNumber = `INV-${order.id.slice(0, 8).toUpperCase()}`
+
+  // Format recipient phone number to standard 11-digit format (e.g. 01700000000)
+  let phone = (order.customer_phone || '').replace(/\D/g, '')
+  if (phone.startsWith('880')) {
+    phone = phone.slice(2)
+  }
+  if (!phone.startsWith('0') && phone.length === 10) {
+    phone = `0${phone}`
+  }
 
   const payload = {
     invoice: invoiceNumber,
-    recipient_name: order.customer_name,
-    recipient_phone: order.customer_phone,
-    recipient_address: order.shipping_address,
+    recipient_name: order.customer_name || 'Valued Customer',
+    recipient_phone: phone,
+    recipient_address: order.shipping_address || 'Address Not Provided',
     cod_amount: Number(codAmount),
     note: order.payment_method === 'COD'
       ? `Prepaid Delivery Charge. Collect COD ৳${codAmount}.`
@@ -122,6 +148,7 @@ export async function bookSteadfastConsignment(order: any, codAmount: number) {
   }
 
   try {
+    console.log('Posting to Steadfast API:', `${baseUrl}/create_order`, payload)
     const response = await axios.post(`${baseUrl}/create_order`, payload, {
       headers: {
         'Api-Key': steadfast_api_key,
@@ -130,16 +157,208 @@ export async function bookSteadfastConsignment(order: any, codAmount: number) {
       }
     })
 
-    if (response.data?.status === 200 && response.data?.consignment) {
+    console.log('Steadfast API Response:', response.data)
+
+    if (response.data?.status == 200 && response.data?.consignment) {
       return {
+        success: true,
         consignment_id: String(response.data.consignment.consignment_id),
-        tracking_code: response.data.consignment.tracking_code,
-        status: response.data.consignment.status
+        tracking_code: response.data.consignment.tracking_code || String(response.data.consignment.consignment_id),
+        status: response.data.consignment.status || 'in_review'
       }
     }
-    return null
+
+    const errMessage = response.data?.message 
+      || (response.data?.errors ? JSON.stringify(response.data.errors) : null)
+      || `Status code ${response.data?.status || 'unknown'}`
+
+    return {
+      success: false,
+      error: `Steadfast Error: ${errMessage}`
+    }
   } catch (error: any) {
     console.error('Steadfast Booking Error:', error.response?.data || error.message)
-    return null
+    const responseData = error.response?.data
+    let errDetail = error.message
+    if (responseData) {
+      if (typeof responseData === 'string') {
+        errDetail = responseData
+      } else if (responseData.message) {
+        errDetail = responseData.message
+      } else if (responseData.errors) {
+        errDetail = typeof responseData.errors === 'string' ? responseData.errors : JSON.stringify(responseData.errors)
+      }
+    }
+
+    return {
+      success: false,
+      error: `Steadfast API Error (${error.response?.status || 500}): ${errDetail}`
+    }
+  }
+}
+
+export async function checkSteadfastStatus(identifier: { consignment_id?: string | number; tracking_code?: string; invoice?: string }) {
+  const settings = await getStoreSettings()
+  const steadfast_api_key = settings.steadfast_api_key?.trim()
+  const steadfast_secret_key = settings.steadfast_secret_key?.trim()
+  const steadfast_base_url = settings.steadfast_base_url?.trim()
+
+  if (!steadfast_api_key || !steadfast_secret_key) {
+    return { success: false, error: 'Steadfast credentials not configured in settings' }
+  }
+
+  let baseUrl = (steadfast_base_url || '').trim()
+  if (!baseUrl || baseUrl.includes('portal.steadfast.com.bd')) {
+    baseUrl = 'https://portal.packzy.com/api/v1'
+  }
+  baseUrl = baseUrl.replace(/\/$/, '')
+
+  let endpoint = ''
+  if (identifier.consignment_id) {
+    endpoint = `${baseUrl}/status_by_cid/${identifier.consignment_id}`
+  } else if (identifier.tracking_code) {
+    endpoint = `${baseUrl}/status_by_trackingcode/${identifier.tracking_code}`
+  } else if (identifier.invoice) {
+    endpoint = `${baseUrl}/status_by_invoice/${identifier.invoice}`
+  } else {
+    return { success: false, error: 'Missing consignment_id, tracking_code, or invoice' }
+  }
+
+  try {
+    const response = await axios.get(endpoint, {
+      headers: {
+        'Api-Key': steadfast_api_key,
+        'Secret-Key': steadfast_secret_key
+      }
+    })
+
+    if (response.data?.status === 200) {
+      return {
+        success: true,
+        delivery_status: response.data.delivery_status || 'unknown',
+        status_code: response.data.status
+      }
+    }
+
+    return {
+      success: false,
+      error: response.data?.message || `Status check returned ${response.data?.status || 'unknown'}`
+    }
+  } catch (error: any) {
+    console.error('Steadfast Status Check Error:', error.response?.data || error.message)
+    return {
+      success: false,
+      error: error.response?.data?.message || error.message
+    }
+  }
+}
+
+export async function createSteadfastReturnRequest(params: { consignment_id?: string | number; tracking_code?: string; invoice?: string; reason?: string }) {
+  const settings = await getStoreSettings()
+  const steadfast_api_key = settings.steadfast_api_key?.trim()
+  const steadfast_secret_key = settings.steadfast_secret_key?.trim()
+  const steadfast_base_url = settings.steadfast_base_url?.trim()
+
+  if (!steadfast_api_key || !steadfast_secret_key) {
+    return { success: false, error: 'Steadfast credentials not configured in settings' }
+  }
+
+  let baseUrl = (steadfast_base_url || '').trim()
+  if (!baseUrl || baseUrl.includes('portal.steadfast.com.bd')) {
+    baseUrl = 'https://portal.packzy.com/api/v1'
+  }
+  baseUrl = baseUrl.replace(/\/$/, '')
+
+  const payload: any = {}
+  if (params.consignment_id) payload.consignment_id = params.consignment_id
+  else if (params.tracking_code) payload.tracking_code = params.tracking_code
+  else if (params.invoice) payload.invoice = params.invoice
+  else {
+    return { success: false, error: 'Please provide consignment_id, tracking_code, or invoice' }
+  }
+
+  if (params.reason) {
+    payload.reason = params.reason
+  }
+
+  try {
+    const response = await axios.post(`${baseUrl}/create_return_request`, payload, {
+      headers: {
+        'Api-Key': steadfast_api_key,
+        'Secret-Key': steadfast_secret_key,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (response.data?.id || response.data?.status === 'pending' || response.data?.status === 200) {
+      return {
+        success: true,
+        id: response.data.id,
+        status: response.data.status || 'pending',
+        message: 'Return request created successfully'
+      }
+    }
+
+    return {
+      success: false,
+      error: response.data?.message || 'Failed to create return request'
+    }
+  } catch (error: any) {
+    console.error('Steadfast Return Request Error:', error.response?.data || error.message)
+    const errData = error.response?.data
+    const errDetail = errData?.error || errData?.message || errData?.errors || error.message
+    return {
+      success: false,
+      error: `Steadfast Return Request Error: ${typeof errDetail === 'object' ? JSON.stringify(errDetail) : errDetail}`
+    }
+  }
+}
+
+export async function getSteadfastBalance() {
+  const settings = await getStoreSettings()
+  const steadfast_api_key = settings.steadfast_api_key?.trim()
+  const steadfast_secret_key = settings.steadfast_secret_key?.trim()
+  const steadfast_base_url = settings.steadfast_base_url?.trim()
+
+  if (!steadfast_api_key || !steadfast_secret_key) {
+    return { success: false, configured: false, current_balance: 0, error: 'Steadfast credentials not configured' }
+  }
+
+  let baseUrl = (steadfast_base_url || '').trim()
+  if (!baseUrl || baseUrl.includes('portal.steadfast.com.bd')) {
+    baseUrl = 'https://portal.packzy.com/api/v1'
+  }
+  baseUrl = baseUrl.replace(/\/$/, '')
+
+  try {
+    const response = await axios.get(`${baseUrl}/get_balance`, {
+      headers: {
+        'Api-Key': steadfast_api_key,
+        'Secret-Key': steadfast_secret_key
+      }
+    })
+
+    if (response.data?.status === 200 && response.data?.current_balance !== undefined) {
+      return {
+        success: true,
+        configured: true,
+        current_balance: Number(response.data.current_balance || 0)
+      }
+    }
+
+    return {
+      success: false,
+      configured: true,
+      current_balance: 0,
+      error: response.data?.message || 'Failed to fetch current balance'
+    }
+  } catch (error: any) {
+    console.warn('Steadfast Balance Notice:', error.response?.data?.message || error.message)
+    return {
+      success: false,
+      configured: true,
+      current_balance: 0,
+      error: error.response?.data?.message || error.message
+    }
   }
 }

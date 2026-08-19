@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     const bookingResult = await bookSteadfastConsignment(order, codAmount)
 
-    if (bookingResult) {
+    if (bookingResult.success && bookingResult.consignment_id) {
       await supabase
         .from('orders')
         .update({
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
       })
     } else {
       return NextResponse.json(
-        { error: 'Steadfast booking failed. Verify API Key & Secret Key in Settings.' },
+        { error: bookingResult.error || 'Steadfast booking failed. Verify API Key & Secret Key in Settings.' },
         { status: 400 }
       )
     }
@@ -71,7 +71,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Steadfast credentials not configured' }, { status: 400 })
   }
 
-  const baseUrl = steadfast_base_url?.replace(/\/$/, '') || 'https://portal.steadfast.com.bd/api/v1'
+  let baseUrl = (steadfast_base_url || '').trim()
+  if (!baseUrl || baseUrl.includes('portal.steadfast.com.bd')) {
+    baseUrl = 'https://portal.packzy.com/api/v1'
+  }
+  baseUrl = baseUrl.replace(/\/$/, '')
 
   try {
     let endpoint = ''

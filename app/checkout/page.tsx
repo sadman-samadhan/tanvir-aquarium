@@ -61,9 +61,10 @@ export default function CheckoutPage() {
   const [errorMessage, setErrorMessage] = useState('')
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false)
 
-  const isPathaoActive = settings.pathao_enabled === true
-  const isSteadfastActive = settings.steadfast_enabled === true
-  const defaultProvider = isPathaoActive ? 'pathao' : isSteadfastActive ? 'steadfast' : 'manual'
+  const activeProvider = settings.active_shipping_provider || (settings.steadfast_enabled ? 'steadfast' : 'pathao')
+  const isPathaoActive = settings.pathao_enabled === true && activeProvider === 'pathao'
+  const isSteadfastActive = settings.steadfast_enabled === true && activeProvider === 'steadfast'
+  const defaultProvider = activeProvider
 
   // Sync payment method if settings change
   useEffect(() => {

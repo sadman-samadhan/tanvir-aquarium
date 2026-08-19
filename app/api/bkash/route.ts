@@ -316,9 +316,9 @@ export async function GET(request: NextRequest) {
 
       if (shippingProvider === 'steadfast') {
         const steadfastResult = await bookSteadfastConsignment(order, codAmount)
-        if (steadfastResult) {
+        if (steadfastResult.success && steadfastResult.consignment_id) {
           steadfastConsignmentId = steadfastResult.consignment_id
-          steadfastTrackingCode = steadfastResult.tracking_code
+          steadfastTrackingCode = steadfastResult.tracking_code || null
         }
       } else {
         pathaoConsignmentId = await bookPathaoConsignment(order, codAmount)
