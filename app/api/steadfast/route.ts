@@ -4,6 +4,8 @@ import { getStoreSettings } from '@/utils/settings'
 import { bookSteadfastConsignment } from '@/utils/courier'
 import axios from 'axios'
 
+export const dynamic = 'force-dynamic'
+
 // POST: Manual dispatch from Admin
 export async function POST(request: NextRequest) {
   try {
@@ -30,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     const bookingResult = await bookSteadfastConsignment(order, codAmount)
 
-    if (bookingResult.success && bookingResult.consignment_id) {
+    if (bookingResult) {
       await supabase
         .from('orders')
         .update({
@@ -48,7 +50,7 @@ export async function POST(request: NextRequest) {
       })
     } else {
       return NextResponse.json(
-        { error: bookingResult.error || 'Steadfast booking failed. Verify API Key & Secret Key in Settings.' },
+        { error: 'Steadfast booking failed. Verify API Key & Secret Key in Settings.' },
         { status: 400 }
       )
     }
@@ -71,11 +73,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Steadfast credentials not configured' }, { status: 400 })
   }
 
-  let baseUrl = (steadfast_base_url || '').trim()
-  if (!baseUrl || baseUrl.includes('portal.steadfast.com.bd')) {
-    baseUrl = 'https://portal.packzy.com/api/v1'
-  }
-  baseUrl = baseUrl.replace(/\/$/, '')
+  const baseUrl = steadfast_base_url?.replace(/\/$/, '') || 'https://portal.steadfast.com.bd/api/v1'
 
   try {
     let endpoint = ''

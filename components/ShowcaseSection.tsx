@@ -188,9 +188,11 @@ function CarouselHeroBanner({
           </Link>
 
           {/* Subtitle / Description Teaser */}
-          {activeProduct.description && (
+          {(activeProduct.short_description || activeProduct.description) && (
             <p className="text-xs sm:text-sm md:text-base text-slate-200/90 line-clamp-2 leading-relaxed drop-shadow max-w-xl mx-auto">
-              {activeProduct.description}
+              {activeProduct.short_description
+                ? activeProduct.short_description
+                : activeProduct.description?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}
             </p>
           )}
         </div>

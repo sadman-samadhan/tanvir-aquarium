@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS public.products (
     category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
     name VARCHAR(255) NOT NULL,
     slug VARCHAR(255) NOT NULL UNIQUE,
+    short_description VARCHAR(255) DEFAULT '',
     description TEXT,
     price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     old_price NUMERIC(10, 2) DEFAULT 0.00,
@@ -72,69 +73,74 @@ CREATE TABLE IF NOT EXISTS public.order_items (
     order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
     product_id UUID REFERENCES public.products(id) ON DELETE SET NULL,
     quantity INT NOT NULL DEFAULT 1,
-    price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    price NUMERIC(10, 2) NOT NULL,
     selected_variations JSONB DEFAULT '{}'::JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON public.order_items(order_id);
 
--- 6. CREATE CONTACT INQUIRY MESSAGES TABLE
+-- 6. CREATE CONTACT MESSAGES TABLE
 CREATE TABLE IF NOT EXISTS public.contact_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
-    phone VARCHAR(50) NOT NULL,
-    email VARCHAR(255),
-    subject VARCHAR(255) DEFAULT 'General Inquiry',
+    email VARCHAR(255) NOT NULL,
+    phone VARCHAR(50) DEFAULT '',
+    subject VARCHAR(255) DEFAULT '',
     message TEXT NOT NULL,
     is_read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_contact_messages_created_at ON public.contact_messages(created_at DESC);
 
 -- 7. CREATE STORE SETTINGS TABLE
 CREATE TABLE IF NOT EXISTS public.store_settings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    -- Branding
+    id UUID PRIMARY KEY DEFAULT '00000000-0000-0000-0000-000000000001',
+    -- Store Branding
     store_name VARCHAR(255) NOT NULL DEFAULT 'My Store',
-    store_tagline VARCHAR(500) DEFAULT 'Premium Quality Products',
-    logo_url TEXT DEFAULT '',
-    favicon_url TEXT DEFAULT '',
-    -- Hero Section
+    store_tagline VARCHAR(255) DEFAULT 'Quality Products in Bangladesh',
+    logo_url TEXT DEFAULT '/logo.jpeg',
+    favicon_url TEXT DEFAULT '/logo.jpeg',
+    watermark_enabled BOOLEAN DEFAULT FALSE,
+    -- Hero Section Customizer
     hero_image_url TEXT DEFAULT '',
-    hero_badge_text VARCHAR(255) DEFAULT 'Premium Collection',
-    hero_title VARCHAR(255) DEFAULT 'Discover Our Handpicked Selection',
-    hero_subtitle VARCHAR(255) DEFAULT 'Quality & Excellence',
-    hero_description TEXT DEFAULT 'Browse our curated catalog. Get fast delivery across Bangladesh and pay securely.',
-    -- Theme Color Palette
-    theme_color VARCHAR(50) DEFAULT 'emerald', -- emerald, blue, purple, rose, amber, teal, indigo, slate
-    -- Payment Options
+    hero_badge_text VARCHAR(255) DEFAULT 'Featured Store',
+    hero_title VARCHAR(255) DEFAULT 'Discover Our',
+    hero_subtitle VARCHAR(255) DEFAULT 'Exclusive Collection',
+    hero_description TEXT DEFAULT 'Browse our curated collection with fast door-to-door delivery across Bangladesh.',
+    -- Theme
+    theme_color VARCHAR(50) DEFAULT 'emerald',
+    -- Payment Options & bKash Credentials
     cod_enabled BOOLEAN DEFAULT TRUE,
     cod_prepay_delivery BOOLEAN DEFAULT TRUE,
     bkash_enabled BOOLEAN DEFAULT TRUE,
-    -- bKash Credentials
-    bkash_api_url TEXT DEFAULT 'https://tokenized.sandbox.bka.sh/v1.2.0-beta',
-    bkash_app_key TEXT DEFAULT '',
-    bkash_app_secret TEXT DEFAULT '',
-    bkash_username TEXT DEFAULT '',
-    bkash_password TEXT DEFAULT '',
-    -- Courier Selection & Credentials
+    bkash_api_url VARCHAR(255) DEFAULT 'https://tokenized.sandbox.bka.sh/v1.2.0-beta',
+    bkash_app_key VARCHAR(255) DEFAULT '',
+    bkash_app_secret VARCHAR(255) DEFAULT '',
+    bkash_username VARCHAR(255) DEFAULT '',
+    bkash_password VARCHAR(255) DEFAULT '',
+    -- Logistics & Courier Integrations
     pathao_enabled BOOLEAN DEFAULT TRUE,
     steadfast_enabled BOOLEAN DEFAULT TRUE,
     active_shipping_provider VARCHAR(50) DEFAULT 'pathao',
-    pathao_api_url TEXT DEFAULT 'https://courier-api-sandbox.pathao.com',
-    pathao_client_id TEXT DEFAULT '',
-    pathao_client_secret TEXT DEFAULT '',
-    pathao_username TEXT DEFAULT '',
-    pathao_password TEXT DEFAULT '',
-    pathao_store_id TEXT DEFAULT '',
-    steadfast_api_key TEXT DEFAULT '',
-    steadfast_secret_key TEXT DEFAULT '',
-    steadfast_base_url TEXT DEFAULT 'https://portal.steadfast.com.bd/api/v1',
-    -- Shipping Charges
-    delivery_charge_inside_dhaka NUMERIC(10, 2) NOT NULL DEFAULT 60.00,
-    delivery_charge_outside_dhaka NUMERIC(10, 2) NOT NULL DEFAULT 120.00,
-    -- About & Contact Info
+    pathao_api_url VARCHAR(255) DEFAULT 'https://courier-api-sandbox.pathao.com',
+    pathao_client_id VARCHAR(255) DEFAULT '',
+    pathao_client_secret VARCHAR(255) DEFAULT '',
+    pathao_username VARCHAR(255) DEFAULT '',
+    pathao_password VARCHAR(255) DEFAULT '',
+    pathao_store_id VARCHAR(255) DEFAULT '',
+    steadfast_api_key VARCHAR(255) DEFAULT '',
+    steadfast_secret_key VARCHAR(255) DEFAULT '',
+    steadfast_base_url VARCHAR(255) DEFAULT 'https://portal.steadfast.com.bd/api/v1',
+    -- Flexible Shipping & Delivery Charges
+    store_city_name VARCHAR(100) DEFAULT 'Dhaka',
+    store_city_id INT DEFAULT 1,
+    shipping_zone_1_label VARCHAR(100) DEFAULT 'Inside Dhaka',
+    shipping_zone_2_label VARCHAR(100) DEFAULT 'Outside Dhaka',
+    delivery_charge_inside_dhaka NUMERIC(10, 2) DEFAULT 60.00,
+    delivery_charge_outside_dhaka NUMERIC(10, 2) DEFAULT 120.00,
+    -- About & Contact Details
     about_enabled BOOLEAN DEFAULT TRUE,
-    about_story TEXT DEFAULT 'Welcome to our store! We provide high-quality items curated with passion and attention to detail. Every product is backed by nationwide delivery and friendly support.',
+    about_story TEXT DEFAULT '',
     contact_phone VARCHAR(50) DEFAULT '+880 1700-000000',
     contact_whatsapp VARCHAR(50) DEFAULT '',
     contact_email VARCHAR(255) DEFAULT 'support@store.com',
@@ -147,6 +153,10 @@ CREATE TABLE IF NOT EXISTS public.store_settings (
     social_tiktok TEXT DEFAULT '',
     social_twitter TEXT DEFAULT '',
     social_linkedin TEXT DEFAULT '',
+    -- Marketing, Ads & Tracking Pixels
+    meta_pixel_id VARCHAR(100) DEFAULT '',
+    google_analytics_id VARCHAR(100) DEFAULT '',
+    tiktok_pixel_id VARCHAR(100) DEFAULT '',
     -- Special Collections (Featured, Best Seller, Trending)
     show_featured BOOLEAN DEFAULT TRUE,
     show_best_seller BOOLEAN DEFAULT TRUE,
@@ -331,12 +341,21 @@ CREATE POLICY "Allow admin manage settings" ON public.store_settings FOR ALL TO 
 CREATE POLICY "Allow authenticated read staff" ON public.staff_members FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Allow admin manage staff" ON public.staff_members FOR ALL TO authenticated USING (true);
 
--- 11. RPC FUNCTION TO SAFELY DECREMENT PRODUCT STOCK
+-- 11. RPC FUNCTIONS TO SAFELY DECREMENT & INCREMENT PRODUCT STOCK
 CREATE OR REPLACE FUNCTION decrement_product_stock(prod_id UUID, qty INT)
 RETURNS VOID AS $$
 BEGIN
     UPDATE public.products
     SET stock = GREATEST(0, stock - qty)
+    WHERE id = prod_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION increment_product_stock(prod_id UUID, qty INT)
+RETURNS VOID AS $$
+BEGIN
+    UPDATE public.products
+    SET stock = stock + qty
     WHERE id = prod_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

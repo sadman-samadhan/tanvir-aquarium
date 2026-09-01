@@ -61,10 +61,9 @@ export default function CheckoutPage() {
   const [errorMessage, setErrorMessage] = useState('')
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false)
 
-  const activeProvider = settings.active_shipping_provider || (settings.steadfast_enabled ? 'steadfast' : 'pathao')
-  const isPathaoActive = settings.pathao_enabled === true && activeProvider === 'pathao'
-  const isSteadfastActive = settings.steadfast_enabled === true && activeProvider === 'steadfast'
-  const defaultProvider = activeProvider
+  const isPathaoActive = settings.pathao_enabled === true
+  const isSteadfastActive = settings.steadfast_enabled === true
+  const defaultProvider = isPathaoActive ? 'pathao' : isSteadfastActive ? 'steadfast' : 'manual'
 
   // Sync payment method if settings change
   useEffect(() => {
@@ -143,17 +142,25 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!isPathaoActive) return
     if (!selectedCity) {
-      setDeliveryCharge(settings.delivery_charge_inside_dhaka || 60)
+      setDeliveryCharge(Number(settings.delivery_charge_inside_dhaka || 60))
       return
     }
 
-    // City ID 1 in Pathao is Dhaka
-    if (String(selectedCity) === '1') {
-      setDeliveryCharge(settings.delivery_charge_inside_dhaka || 60)
+    // Match customer's city with store base city
+    const currentCityObj = cities.find((c) => String(c.city_id) === String(selectedCity))
+    const baseCityName = (settings.store_city_name || 'Dhaka').toLowerCase().trim()
+    const customerCityName = currentCityObj?.city_name?.toLowerCase().trim() || ''
+
+    const isStoreCity = customerCityName
+      ? customerCityName.includes(baseCityName) || baseCityName.includes(customerCityName)
+      : String(selectedCity) === String(settings.store_city_id || '1')
+
+    if (isStoreCity) {
+      setDeliveryCharge(Number(settings.delivery_charge_inside_dhaka || 60))
     } else {
-      setDeliveryCharge(settings.delivery_charge_outside_dhaka || 120)
+      setDeliveryCharge(Number(settings.delivery_charge_outside_dhaka || 120))
     }
-  }, [isPathaoActive, selectedCity, settings])
+  }, [isPathaoActive, selectedCity, cities, settings])
 
   // Form Submit Handler
   const handlePlaceOrder = async (e: React.FormEvent) => {
@@ -335,7 +342,7 @@ export default function CheckoutPage() {
                               onChange={() => setDeliveryRegion('inside_dhaka')}
                               className="text-brand-600"
                             />
-                            <span className="text-xs font-bold text-slate-900">Inside Dhaka City</span>
+                            <span className="text-xs font-bold text-slate-900">{settings.shipping_zone_1_label || 'Inside Dhaka City'}</span>
                           </div>
                           <span className="text-xs font-black text-brand-700">৳{settings.delivery_charge_inside_dhaka}</span>
                         </label>
@@ -352,7 +359,7 @@ export default function CheckoutPage() {
                               onChange={() => setDeliveryRegion('outside_dhaka')}
                               className="text-brand-600"
                             />
-                            <span className="text-xs font-bold text-slate-900">Outside Dhaka (All BD)</span>
+                            <span className="text-xs font-bold text-slate-900">{settings.shipping_zone_2_label || 'Outside Dhaka (All BD)'}</span>
                           </div>
                           <span className="text-xs font-black text-brand-700">৳{settings.delivery_charge_outside_dhaka}</span>
                         </label>

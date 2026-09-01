@@ -21,6 +21,7 @@ export interface Product {
   category_id: string
   name: string
   slug: string
+  short_description?: string
   description?: string
   price: number
   old_price?: number
@@ -45,22 +46,20 @@ export interface Category {
 export function extractProductOptions(variations: any, fallbackStock = 0): VariationOption[] {
   if (!variations || typeof variations !== 'object') return []
 
-  // Check structured format { options: [...] }
   if (Array.isArray(variations.options)) {
-    const valid = variations.options
-      .filter((opt: any) => opt && opt.name && Array.isArray(opt.values) && opt.values.length > 0)
-      .map((opt: any) => ({
-        name: opt.name,
-        values: opt.values.map((v: any) => ({
-          label: typeof v === 'object' ? v.label : String(v),
-          stock: typeof v === 'object' && typeof v.stock === 'number' ? v.stock : fallbackStock,
-          image_url: typeof v === 'object' ? v.image_url : ''
-        }))
-      }))
-    if (valid.length > 0) return valid
+    return variations.options.map((opt: any) => ({
+      name: opt.name || 'Option',
+      values: Array.isArray(opt.values)
+        ? opt.values.map((v: any) => ({
+            label: typeof v === 'object' ? v.label || '' : String(v),
+            stock: typeof v === 'object' && typeof v.stock === 'number' ? v.stock : fallbackStock,
+            image_url: typeof v === 'object' ? v.image_url || '' : '',
+            price: typeof v === 'object' && v.price !== undefined && v.price !== null && v.price !== '' ? Number(v.price) : undefined
+          }))
+        : []
+    }))
   }
 
-  // Check legacy flat format e.g. { "sizes": ["1.5 Feet", "2 Feet"] }
   const options: VariationOption[] = []
   Object.entries(variations).forEach(([key, values]) => {
     if (key === 'category_ids' || key === 'options') return
@@ -71,7 +70,9 @@ export function extractProductOptions(variations: any, fallbackStock = 0): Varia
         name: cleanName,
         values: values.map((v: any) => ({
           label: String(v),
-          stock: stockPerVal
+          stock: stockPerVal,
+          image_url: '',
+          price: undefined
         }))
       })
     }
@@ -223,11 +224,11 @@ export default function ProductCard({ product, categories = [], onAddToCartSucce
           </h3>
         </Link>
 
-        {product.description && (
-          <p className="hidden sm:block mt-1 text-xs text-slate-500 line-clamp-2 flex-grow">
-            {product.description}
+        {product.short_description && product.short_description.trim() ? (
+          <p className="hidden sm:block mt-1 text-xs text-slate-500 line-clamp-2 sm:line-clamp-3 flex-grow leading-relaxed">
+            {product.short_description.trim()}
           </p>
-        )}
+        ) : null}
 
         {/* Price & Action button bar */}
         <div className="mt-2.5 sm:mt-4 flex items-center justify-between pt-2 border-t border-slate-100">

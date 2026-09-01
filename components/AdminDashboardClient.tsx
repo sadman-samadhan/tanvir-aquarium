@@ -122,8 +122,6 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
   // Delete Order Confirmation Modal State
   const [deleteConfirmOrder, setDeleteConfirmOrder] = useState<Order | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
-  const [syncLoading, setSyncLoading] = useState<string | null>(null)
-  const [cancelLoading, setCancelLoading] = useState<string | null>(null)
 
   // Column Sorting State
   const [sortField, setSortField] = useState<'date' | 'customer' | 'status' | 'payment' | 'amount' | 'courier'>('date')
@@ -412,6 +410,59 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
     router.refresh()
   }
 
+  // Live Courier Status Sync
+  const [syncingCourier, setSyncingCourier] = useState<string | null>(null) // 'bulk' or orderId
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
+
+  const handleSyncCourierStatus = async (orderId?: string) => {
+    setSyncingCourier(orderId || 'bulk')
+    setSyncMessage(null)
+
+    try {
+      const payload = orderId ? { order_id: orderId } : { bulk: true }
+      const res = await axios.post('/api/admin/courier-sync', payload)
+
+      if (res.data?.success) {
+        const results = res.data.results as any[]
+        if (results && results.length > 0) {
+          // Update orders state with any modified order statuses
+          setOrders((prev) =>
+            prev.map((ord) => {
+              const matched = results.find((r: any) => r.order_id === ord.id)
+              if (matched && matched.new_order_status) {
+                return { ...ord, order_status: matched.new_order_status }
+              }
+              return ord
+            })
+          )
+
+          const firstResult = results[0]
+          if (orderId) {
+            setSyncMessage(
+              firstResult.error 
+                ? `Courier Note: ${firstResult.error}` 
+                : `Live Courier Status: ${firstResult.raw_status ? firstResult.raw_status.toUpperCase() : 'Active'} → Order marked as ${firstResult.new_order_status}`
+            )
+          } else {
+            const updatedCount = results.filter((r: any) => r.status_changed).length
+            setSyncMessage(`Synced ${results.length} order(s). ${updatedCount} status(es) automatically updated!`)
+          }
+          setTimeout(() => setSyncMessage(null), 6000)
+        } else {
+          setSyncMessage(res.data.message || 'No booked orders found to sync.')
+          setTimeout(() => setSyncMessage(null), 4000)
+        }
+      } else {
+        alert(res.data?.error || 'Failed to sync courier status')
+      }
+    } catch (err: any) {
+      console.error(err)
+      alert(err.response?.data?.error || err.message || 'Error checking courier status')
+    } finally {
+      setSyncingCourier(null)
+    }
+  }
+
   // Calculate statistics
   const paidOrders = orders.filter(
     (o) => o.payment_status === 'FullyPaid' || o.payment_status === 'DeliveryChargePrePaid'
@@ -540,77 +591,6 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
     }
   }
 
-  // Courier Status Sync (Single or Bulk)
-  const handleSyncCourierStatus = async (orderId?: string, bulk = false) => {
-    const loadingKey = bulk ? 'bulk' : (orderId || '')
-    setSyncLoading(loadingKey)
-    try {
-      const response = await fetch('/api/admin/sync-courier', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: orderId, bulk })
-      })
-      const data = await response.json()
-      if (data.success) {
-        if (bulk) {
-          alert(`Bulk Courier Sync Completed!\nChecked: ${data.checked_count} active Steadfast orders\nUpdated: ${data.updated_count} order status changes`)
-        } else {
-          alert(`Steadfast Courier Status: ${(data.delivery_status || 'UNKNOWN').toUpperCase()}${data.updated ? '\nOrder status updated in database!' : ''}`)
-        }
-        router.refresh()
-      } else {
-        alert(data.error || 'Failed to sync courier status')
-      }
-    } catch (err: any) {
-      console.error('Courier sync error:', err)
-      alert('Error syncing courier status')
-    } finally {
-      setSyncLoading(null)
-    }
-  }
-
-  // Cancel Dispatch / Reset Courier Booking
-  const handleCancelCourierDispatch = async (orderId: string) => {
-    if (!confirm('Are you sure you want to cancel courier dispatch and reset this order back to Confirmed state so it can be re-dispatched?')) return
-    setCancelLoading(orderId)
-    try {
-      const response = await fetch('/api/admin/dispatch/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: orderId, reason: 'Merchant reset dispatch in admin panel' })
-      })
-      const data = await response.json()
-      if (data.success) {
-        setOrders((prev) =>
-          prev.map((o) => {
-            if (o.id === orderId) {
-              return {
-                ...o,
-                order_status: 'Confirmed',
-                shipping_provider: null,
-                steadfast_consignment_id: null,
-                steadfast_tracking_code: null,
-                pathao_consignment_id: null,
-                pathao_status: null
-              } as any
-            }
-            return o
-          })
-        )
-        setEditingOrder(null)
-        alert('Dispatch cancelled! Order reset to Confirmed and is ready for re-dispatch.')
-        router.refresh()
-      } else {
-        alert(data.error || 'Failed to cancel dispatch')
-      }
-    } catch (err: any) {
-      console.error('Cancel dispatch error:', err)
-      alert('Error cancelling dispatch')
-    } finally {
-      setCancelLoading(null)
-    }
-  }
-
   // Live Calculations in Edit Modal
   const modalSubtotal = editItems.reduce((sum, it) => sum + (it.price || 0) * (it.quantity || 1), 0)
   const modalTotalPrice = modalSubtotal + editDeliveryCharge
@@ -732,23 +712,38 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
                     />
                   </div>
 
-                  <div className="flex items-center gap-3 self-start sm:self-center">
-                    {settings.steadfast_enabled && (
+                  <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                    {(settings.steadfast_enabled || settings.pathao_enabled) && (
                       <button
-                        onClick={() => handleSyncCourierStatus(undefined, true)}
-                        disabled={syncLoading === 'bulk'}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-900 text-xs font-bold transition disabled:opacity-50 shadow-sm"
-                        title="Sync live delivery statuses for all active Steadfast orders"
+                        type="button"
+                        onClick={() => handleSyncCourierStatus()}
+                        disabled={syncingCourier === 'bulk'}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition disabled:opacity-50 border border-slate-200/80"
+                        title="Check live delivery & return statuses from Steadfast & Pathao APIs"
                       >
-                        <RefreshCw className={`h-3.5 w-3.5 text-teal-700 ${syncLoading === 'bulk' ? 'animate-spin' : ''}`} />
-                        <span>{syncLoading === 'bulk' ? 'Syncing...' : 'Sync Steadfast Orders'}</span>
+                        <RefreshCw className={`h-3.5 w-3.5 ${syncingCourier === 'bulk' ? 'animate-spin text-brand-600' : 'text-slate-500'}`} />
+                        <span>{syncingCourier === 'bulk' ? 'Syncing...' : 'Sync Couriers'}</span>
                       </button>
                     )}
+
                     <span className="text-xs font-bold text-slate-500">
                       Showing {sortedOrders.length} of {orders.length} orders
                     </span>
                   </div>
                 </div>
+
+                {/* Live Sync Notification Banner */}
+                {syncMessage && (
+                  <div className="mx-3.5 sm:mx-4 p-3 bg-brand-50 border border-brand-200 text-brand-900 rounded-xl text-xs font-semibold flex items-center justify-between animate-fadeIn shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-brand-600 flex-shrink-0" />
+                      <span>{syncMessage}</span>
+                    </div>
+                    <button onClick={() => setSyncMessage(null)} className="text-brand-400 hover:text-brand-700 p-0.5 rounded">
+                      <XCircle className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
 
                 {/* 1. MOBILE RESPONSIVE ORDER CARDS (Phone View) */}
                 <div className="block md:hidden divide-y divide-slate-100">
@@ -869,9 +864,20 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
                                 <CheckCircle2 className="h-3.5 w-3.5 text-brand-600" />
                                 <span>{provider === 'steadfast' ? 'Steadfast Booked' : 'Pathao Booked'}</span>
                               </div>
-                              <span className="font-mono text-[10px] text-brand-700 font-bold">
-                                #{order.steadfast_consignment_id || order.pathao_consignment_id}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-[10px] text-brand-700 font-bold">
+                                  #{order.steadfast_consignment_id || order.pathao_consignment_id}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSyncCourierStatus(order.id)}
+                                  disabled={syncingCourier === order.id}
+                                  className="p-1 rounded hover:bg-brand-200/60 text-brand-700 transition"
+                                  title="Refresh Live Courier Status"
+                                >
+                                  <RefreshCw className={`h-3 w-3 ${syncingCourier === order.id ? 'animate-spin text-brand-700' : ''}`} />
+                                </button>
+                              </div>
                             </div>
                           ) : isDispatched ? (
                             <div className="p-2 rounded-lg bg-slate-100 text-xs flex items-center gap-1.5 text-slate-700 font-bold text-[11px]">
@@ -939,18 +945,8 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
                               <div />
                             )}
 
-                            {/* Secondary Tools: Cancel, Edit, Invoice, Delete */}
-                            <div className="flex flex-wrap items-center gap-1.5 ml-auto">
-                              {(isDispatched || hasConsignment || currentStatus === 'Shipped') && currentStatus !== 'Cancelled' && (
-                                <button
-                                  onClick={() => handleCancelCourierDispatch(order.id)}
-                                  disabled={cancelLoading === order.id}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100 transition"
-                                >
-                                  <XCircle className="h-3.5 w-3.5 text-red-600" />
-                                  <span>{cancelLoading === order.id ? 'Cancelling...' : 'Cancel Dispatch'}</span>
-                                </button>
-                              )}
+                            {/* Secondary Tools: Edit, Invoice, Delete */}
+                            <div className="flex items-center gap-1.5 ml-auto">
                               <button
                                 onClick={() => openEditModal(order)}
                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-semibold shadow-sm hover:bg-slate-50"
@@ -1201,19 +1197,17 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
                                     <div className="flex items-center gap-1.5">
                                       <span className="inline-flex items-center gap-1 rounded bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-700">
                                         <CheckCircle2 className="h-3 w-3" />
-                                        {provider === 'steadfast' ? 'Steadfast Booked' : 'Pathao Booked'}
+                                        {provider === 'steadfast' ? 'Steadfast' : 'Pathao'}
                                       </span>
-                                      {provider === 'steadfast' && (
-                                        <button
-                                          onClick={() => handleSyncCourierStatus(order.id, false)}
-                                          disabled={syncLoading === order.id}
-                                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 text-[9px] font-bold transition disabled:opacity-50"
-                                          title="Sync live Steadfast status"
-                                        >
-                                          <RefreshCw className={`h-2.5 w-2.5 ${syncLoading === order.id ? 'animate-spin' : ''}`} />
-                                          <span>{syncLoading === order.id ? 'Syncing...' : 'Sync'}</span>
-                                        </button>
-                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSyncCourierStatus(order.id)}
+                                        disabled={syncingCourier === order.id}
+                                        className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-brand-600 transition"
+                                        title="Refresh live courier status"
+                                      >
+                                        <RefreshCw className={`h-3 w-3 ${syncingCourier === order.id ? 'animate-spin text-brand-600' : ''}`} />
+                                      </button>
                                     </div>
                                     <span className="block font-mono text-[10px] text-slate-500 font-bold">
                                       ID: {order.steadfast_consignment_id || order.pathao_consignment_id}
@@ -1270,17 +1264,6 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
 
                               {/* Action Buttons */}
                               <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
-                                {(isDispatched || hasConsignment || currentStatus === 'Shipped') && currentStatus !== 'Cancelled' && (
-                                  <button
-                                    onClick={() => handleCancelCourierDispatch(order.id)}
-                                    disabled={cancelLoading === order.id}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 shadow-sm text-xs font-semibold transition disabled:opacity-50"
-                                    title="Cancel Courier Dispatch & Request Return"
-                                  >
-                                    <XCircle className="h-3.5 w-3.5 text-red-600" />
-                                    <span>{cancelLoading === order.id ? 'Cancelling...' : 'Cancel Dispatch'}</span>
-                                  </button>
-                                )}
                                 <button
                                   onClick={() => openEditModal(order)}
                                   className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 shadow-sm text-xs font-semibold transition"
@@ -1734,35 +1717,21 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
               </div>
 
               {/* Modal Buttons */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-slate-100">
-                {editingOrder && editingOrder.order_status !== 'Cancelled' ? (
-                  <button
-                    type="button"
-                    onClick={() => handleCancelCourierDispatch(editingOrder.id)}
-                    disabled={cancelLoading === editingOrder.id}
-                    className="px-4 py-2.5 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-xs font-bold text-red-700 transition flex items-center gap-1.5 self-start sm:self-auto shadow-sm"
-                  >
-                    <XCircle className="h-4 w-4 text-red-600" />
-                    <span>{cancelLoading === editingOrder.id ? 'Cancelling Dispatch...' : 'Cancel Dispatch / Request Return'}</span>
-                  </button>
-                ) : <div />}
-
-                <div className="flex items-center justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setEditingOrder(null)}
-                    className="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saveLoading}
-                    className="px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-md disabled:bg-slate-400 transition"
-                  >
-                    {saveLoading ? 'Saving Changes...' : 'Save All Changes'}
-                  </button>
-                </div>
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingOrder(null)}
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saveLoading}
+                  className="px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-md disabled:bg-slate-400 transition"
+                >
+                  {saveLoading ? 'Saving Changes...' : 'Save All Changes'}
+                </button>
               </div>
 
             </form>

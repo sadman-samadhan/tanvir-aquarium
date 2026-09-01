@@ -54,17 +54,11 @@ export default async function OrderConfirmationPage({ searchParams }: ConfirmPro
     .select('*, products(name)')
     .eq('order_id', order.id)
 
-  const advancePaid = order.payment_details?.advance_paid !== undefined 
-    ? Number(order.payment_details.advance_paid)
-    : (order.payment_status === 'FullyPaid' 
-        ? Number(order.total_price) 
-        : order.payment_status === 'DeliveryChargePrePaid' 
-          ? Number(order.delivery_charge) 
-          : 0)
-
-  const codToCollect = order.payment_method === 'COD' || order.payment_status !== 'FullyPaid'
-    ? Math.max(0, Number(order.total_price) - advancePaid)
+  const codToCollect = order.payment_method === 'COD' 
+    ? Number(order.total_price) - Number(order.delivery_charge)
     : 0
+
+  const courierName = order.shipping_provider === 'steadfast' ? 'Steadfast Courier' : 'Pathao Courier'
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -87,17 +81,10 @@ export default async function OrderConfirmationPage({ searchParams }: ConfirmPro
               <span className="font-mono font-bold text-slate-900">{order.id}</span>
             </div>
             
-            {trx_id ? (
-              <div className="flex justify-between border-b border-slate-200/60 pb-2">
-                <span className="text-slate-500">bKash Transaction ID:</span>
-                <span className="font-mono font-bold text-slate-900">{trx_id}</span>
-              </div>
-            ) : order.payment_details?.trx_id || order.payment_details?.trxID || order.payment_details?.paymentID ? (
-              <div className="flex justify-between border-b border-slate-200/60 pb-2">
-                <span className="text-slate-500">bKash Transaction ID:</span>
-                <span className="font-mono font-bold text-slate-900">{order.payment_details.trx_id || order.payment_details.trxID || order.payment_details.paymentID}</span>
-              </div>
-            ) : null}
+            <div className="flex justify-between border-b border-slate-200/60 pb-2">
+              <span className="text-slate-500">bKash Transaction ID:</span>
+              <span className="font-mono font-bold text-slate-900">{trx_id || 'Completed'}</span>
+            </div>
 
             <div className="flex justify-between border-b border-slate-200/60 pb-2">
               <span className="text-slate-500">Customer:</span>
@@ -107,18 +94,14 @@ export default async function OrderConfirmationPage({ searchParams }: ConfirmPro
             <div className="flex justify-between border-b border-slate-200/60 pb-2">
               <span className="text-slate-500">Payment Option:</span>
               <span className="font-bold text-slate-900 uppercase">
-                {order.payment_status === 'DeliveryChargePrePaid'
-                  ? 'COD (Delivery Charge Prepaid)'
-                  : order.payment_status === 'FullyPaid'
-                    ? 'Fully Prepaid via bKash'
-                    : 'Cash on Delivery (COD)'}
+                {order.payment_method === 'COD' ? 'Cash on Delivery (COD)' : 'Fully Prepaid via bKash'}
               </span>
             </div>
 
             <div className="flex justify-between text-sm pt-1">
               <span className="text-slate-900 font-bold">Total Paid Now:</span>
               <span className="font-black text-brand-700">
-                ৳{advancePaid.toLocaleString()}
+                ৳{Number(order.payment_method === 'COD' ? order.delivery_charge : order.total_price).toLocaleString()}
               </span>
             </div>
           </div>
@@ -159,22 +142,41 @@ export default async function OrderConfirmationPage({ searchParams }: ConfirmPro
           <div className="rounded-xl bg-blue-50 border border-blue-100 p-5 text-left text-xs space-y-2 text-blue-900">
             <div className="flex items-center gap-1.5 font-bold">
               <Truck className="h-4 w-4 text-blue-700" />
-              <span>Delivery Details:</span>
+              <span>Courier Delivery Details:</span>
             </div>
-            {order.payment_method === 'COD' || codToCollect > 0 ? (
+            {order.payment_method === 'COD' ? (
               <p className="leading-relaxed">
-                Your order will be dispatched shortly. 
-                {advancePaid > 0 ? (
-                  <> We received your advance payment of <strong>৳{advancePaid.toLocaleString()}</strong>. Please keep <strong>৳{codToCollect.toLocaleString()}</strong> cash ready upon delivery.</>
-                ) : (
-                  <> Please keep <strong>৳{codToCollect.toLocaleString()}</strong> cash ready upon delivery.</>
-                )}
+                Your delivery charge is confirmed. Your order will be dispatched via <strong>{courierName}</strong>. 
+                Please keep <strong>৳{codToCollect.toLocaleString()}</strong> cash ready upon delivery.
               </p>
             ) : (
               <p className="leading-relaxed">
-                Your order is fully prepaid and will be dispatched shortly. 
+                Your order is fully prepaid. Your order will be dispatched via <strong>{courierName}</strong>. 
                 Your COD balance is <strong>৳0</strong>.
               </p>
+            )}
+            
+            {order.pathao_consignment_id && (
+              <div className="pt-2">
+                <span className="font-bold block">Pathao Consignment ID:</span>
+                <span className="font-mono bg-white border border-blue-200 px-2 py-0.5 rounded text-blue-900 font-bold block w-fit mt-1">
+                  {order.pathao_consignment_id}
+                </span>
+              </div>
+            )}
+
+            {order.steadfast_consignment_id && (
+              <div className="pt-2 space-y-1">
+                <span className="font-bold block">Steadfast Consignment ID:</span>
+                <span className="font-mono bg-white border border-blue-200 px-2 py-0.5 rounded text-blue-900 font-bold block w-fit">
+                  {order.steadfast_consignment_id}
+                </span>
+                {order.steadfast_tracking_code && (
+                  <span className="text-[11px] text-blue-700 font-mono block">
+                    Tracking Code: {order.steadfast_tracking_code}
+                  </span>
+                )}
+              </div>
             )}
           </div>
 

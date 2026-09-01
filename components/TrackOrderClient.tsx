@@ -42,6 +42,7 @@ interface TrackedOrder {
   pathao_status?: string
   steadfast_consignment_id?: string
   steadfast_tracking_code?: string
+  payment_details?: any
   created_at: string
   order_items?: OrderItem[]
 }
@@ -181,6 +182,12 @@ export default function TrackOrderClient({ settings }: TrackOrderClientProps) {
             {orders.map((order) => {
               const currentStep = getStatusStep(order)
               const isCancelled = (order.order_status || '').toLowerCase() === 'cancelled'
+              const isCompletedOrDelivered = (order.order_status || '').toLowerCase() === 'delivered' || (order.order_status || '').toLowerCase() === 'completed' || order.pathao_status === 'delivered'
+              const isFullyPaid = order.payment_status === 'FullyPaid' || isCompletedOrDelivered
+              const isPartiallyPaid = !isFullyPaid && (order.payment_status === 'DeliveryChargePrePaid' || (order.payment_details?.advance_paid !== undefined && Number(order.payment_details.advance_paid) > 0))
+              const advanceAmount = order.payment_details?.advance_paid !== undefined ? Number(order.payment_details.advance_paid) : (order.payment_status === 'DeliveryChargePrePaid' ? Number(order.delivery_charge || 0) : 0)
+              const dueOnDelivery = Math.max(0, Number(order.total_price) - advanceAmount)
+
               const shortId = order.id.slice(0, 8).toUpperCase()
               const orderDate = new Date(order.created_at).toLocaleDateString('en-US', {
                 month: 'short',
@@ -332,19 +339,43 @@ export default function TrackOrderClient({ settings }: TrackOrderClientProps) {
                       <p className="font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                         <CheckCircle2 className="h-3.5 w-3.5 text-brand-600" /> Payment & Charges
                       </p>
-                      <div className="space-y-1 text-slate-600 font-medium">
+                      <div className="space-y-2 text-slate-600 font-medium">
                         <div className="flex justify-between">
                           <span>Total Amount:</span>
-                          <span className="font-bold text-slate-900">৳{Number(order.total_price).toLocaleString()}</span>
+                          <span className="font-black text-slate-950">৳{Number(order.total_price).toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Payment Method:</span>
-                          <span className="font-semibold text-slate-800">{order.payment_method}</span>
+                          <span className="font-semibold text-slate-800">{order.payment_method === 'COD' ? 'Cash on Delivery (COD)' : order.payment_method}</span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex justify-between items-center pt-1.5 border-t border-slate-100">
                           <span>Payment Status:</span>
-                          <span className="font-bold text-brand-700">{order.payment_status}</span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            isFullyPaid
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : isPartiallyPaid
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : order.payment_status === 'Failed'
+                                  ? 'bg-red-50 text-red-700 border border-red-200'
+                                  : 'bg-amber-50 text-amber-800 border border-amber-200'
+                          }`}>
+                            {isCompletedOrDelivered
+                              ? 'Paid on Delivery (Completed)'
+                              : order.payment_status === 'FullyPaid'
+                                ? 'Fully Paid Online'
+                                : isPartiallyPaid
+                                  ? `Advance Paid (৳${advanceAmount.toLocaleString()})`
+                                  : order.payment_status === 'Failed'
+                                    ? 'Payment Failed'
+                                    : 'Pending (Due on Delivery)'}
+                          </span>
                         </div>
+                        {!isFullyPaid && (
+                          <div className="flex justify-between text-[11px] text-amber-800 font-bold bg-amber-50/60 p-2 rounded-lg border border-amber-200/60">
+                            <span>Balance Due on Delivery:</span>
+                            <span>৳{dueOnDelivery.toLocaleString()}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

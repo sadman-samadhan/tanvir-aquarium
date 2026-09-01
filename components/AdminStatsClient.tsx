@@ -71,30 +71,6 @@ interface AdminStatsClientProps {
 export default function AdminStatsClient({ initialOrders, initialProducts, initialCategories }: AdminStatsClientProps) {
   const router = useRouter()
   const [timeRange, setTimeRange] = useState<'all' | '30days' | '7days'>('all')
-  const [steadfastBalance, setSteadfastBalance] = useState<number | null>(null)
-  const [steadfastConfigured, setSteadfastConfigured] = useState<boolean>(true)
-  const [loadingBalance, setLoadingBalance] = useState<boolean>(false)
-
-  React.useEffect(() => {
-    async function fetchBalance() {
-      setLoadingBalance(true)
-      try {
-        const res = await fetch('/api/steadfast/balance')
-        const data = await res.json()
-        if (data.success && data.configured !== false) {
-          setSteadfastBalance(Number(data.current_balance || 0))
-          setSteadfastConfigured(true)
-        } else if (data.configured === false) {
-          setSteadfastConfigured(false)
-        }
-      } catch (err) {
-        console.warn('Failed to fetch Steadfast balance:', err)
-      } finally {
-        setLoadingBalance(false)
-      }
-    }
-    fetchBalance()
-  }, [])
 
   // Filter orders by time range if selected
   const now = new Date().getTime()
@@ -393,51 +369,6 @@ export default function AdminStatsClient({ initialOrders, initialProducts, initi
             </div>
 
           </div>
-
-          {/* STEADFAST COURIER MERCHANT WALLET BANNER */}
-          {steadfastConfigured && (
-            <div className="bg-gradient-to-r from-teal-900 via-slate-900 to-teal-950 rounded-2xl p-4 sm:p-5 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-teal-800/80 animate-fadeIn">
-              <div className="flex items-center gap-3.5">
-                <div className="p-3 rounded-2xl bg-teal-500/20 text-teal-300 border border-teal-500/30 shadow-inner">
-                  <Truck className="h-6 w-6" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black uppercase tracking-wider text-teal-300">Steadfast Merchant Wallet</span>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-teal-400/20 text-teal-200 border border-teal-400/30">
-                      Live Courier Balance
-                    </span>
-                  </div>
-                  <p className="text-2xl sm:text-3xl font-black font-mono text-white mt-0.5">
-                    {loadingBalance ? 'Updating balance...' : steadfastBalance !== null ? `৳${steadfastBalance.toLocaleString()}` : '৳0'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 self-end sm:self-auto">
-                <button
-                  onClick={async () => {
-                    setLoadingBalance(true)
-                    try {
-                      const res = await fetch('/api/steadfast/balance')
-                      const data = await res.json()
-                      if (data.success) setSteadfastBalance(Number(data.current_balance || 0))
-                    } catch (err) {
-                      console.error(err)
-                    } finally {
-                      setLoadingBalance(false)
-                    }
-                  }}
-                  disabled={loadingBalance}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-800/60 hover:bg-teal-800 text-teal-100 text-xs font-bold transition border border-teal-700/50 shadow-sm"
-                  title="Fetch live account balance from Steadfast servers"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 text-teal-300 ${loadingBalance ? 'animate-spin' : ''}`} />
-                  <span>{loadingBalance ? 'Refreshing...' : 'Refresh Balance'}</span>
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* ROW 2: ORDER LIFECYCLE & PAYMENT DISTRIBUTION */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

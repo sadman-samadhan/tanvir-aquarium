@@ -95,7 +95,21 @@ export default function ProductDetailClient({ product, categories, relatedProduc
     return minStock === Infinity ? product.stock : minStock
   }
 
+  // Calculate dynamic variant price override (if selected option specifies a custom price)
+  const computeActivePrice = () => {
+    let activePrice = Number(product.price)
+    parsedOptions.forEach((opt) => {
+      const selectedLabel = selectedVariations[opt.name]
+      const valObj = opt.values.find((v) => v.label === selectedLabel)
+      if (valObj && valObj.price !== undefined && valObj.price !== null && Number(valObj.price) > 0) {
+        activePrice = Number(valObj.price)
+      }
+    })
+    return activePrice
+  }
+
   const currentStock = computeSelectedStock()
+  const activePrice = computeActivePrice()
   const isAvailable = currentStock > 0
 
   const handleAddToCart = () => {
@@ -105,13 +119,15 @@ export default function ProductDetailClient({ product, categories, relatedProduc
       id: product.id,
       name: product.name,
       slug: product.slug,
-      price: Number(product.price),
+      price: activePrice,
       image: selectedMedia || product.images[0] || 'https://images.unsplash.com/photo-1522069169874-c58ec4b76be5',
       selectedVariations
     }, quantity)
     
     setCartDrawerOpen(true)
   }
+
+  const isRichDescription = product.description && /<[a-z][\s\S]*>/i.test(product.description)
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -210,7 +226,7 @@ export default function ProductDetailClient({ product, categories, relatedProduc
 
             {/* Price Box */}
             <div className="flex items-baseline gap-3 py-3 border-y border-slate-200">
-              <span className="text-3xl font-black text-slate-950">৳{Number(product.price).toLocaleString()}</span>
+              <span className="text-3xl font-black text-slate-950">৳{activePrice.toLocaleString()}</span>
               {product.old_price > 0 && (
                 <span className="text-lg text-slate-400 line-through font-semibold">
                   ৳{Number(product.old_price).toLocaleString()}
@@ -219,7 +235,14 @@ export default function ProductDetailClient({ product, categories, relatedProduc
             </div>
 
             {/* Description */}
-            <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{product.description}</p>
+            {isRichDescription ? (
+              <div
+                className="prose prose-sm max-w-none text-slate-600 leading-relaxed font-normal"
+                dangerouslySetInnerHTML={{ __html: product.description }}
+              />
+            ) : (
+              <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{product.description}</p>
+            )}
 
             {/* Dynamic Variations Selectors */}
             {parsedOptions.length > 0 && (

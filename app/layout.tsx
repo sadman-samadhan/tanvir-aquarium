@@ -4,6 +4,7 @@ import '@/app/globals.css'
 import { CartProvider } from '@/context/CartContext'
 import { StoreProvider } from '@/context/StoreContext'
 import ThemeProvider from '@/components/ThemeProvider'
+import TrackingScripts from '@/components/TrackingScripts'
 import { getPublicSettings } from '@/utils/settings'
 import { createAdminClient } from '@/utils/supabase/server'
 
@@ -44,6 +45,7 @@ export default async function RootLayout({
         <link rel="icon" href={settings.favicon_url || settings.logo_url || '/logo.jpeg'} />
       </head>
       <body suppressHydrationWarning className={`${inter.className} bg-slate-50 text-slate-900 antialiased min-h-screen flex flex-col`}>
+        <TrackingScripts settings={settings} />
         <ThemeProvider themeColor={settings.theme_color}>
           <StoreProvider initialSettings={settings} initialCategories={categories || []}>
             <CartProvider>
