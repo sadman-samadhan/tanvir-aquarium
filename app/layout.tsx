@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import '@/app/globals.css'
 import { CartProvider } from '@/context/CartContext'
 import { StoreProvider } from '@/context/StoreContext'
+import { LanguageProvider } from '@/context/LanguageContext'
 import ThemeProvider from '@/components/ThemeProvider'
 import TrackingScripts from '@/components/TrackingScripts'
 import { getPublicSettings } from '@/utils/settings'
@@ -46,13 +47,15 @@ export default async function RootLayout({
       </head>
       <body suppressHydrationWarning className={`${inter.className} bg-slate-50 text-slate-900 antialiased min-h-screen flex flex-col`}>
         <TrackingScripts settings={settings} />
-        <ThemeProvider themeColor={settings.theme_color}>
-          <StoreProvider initialSettings={settings} initialCategories={categories || []}>
-            <CartProvider>
-              {children}
-            </CartProvider>
-          </StoreProvider>
-        </ThemeProvider>
+        <LanguageProvider>
+          <ThemeProvider themeColor={settings.theme_color}>
+            <StoreProvider initialSettings={settings} initialCategories={categories || []}>
+              <CartProvider>
+                {children}
+              </CartProvider>
+            </StoreProvider>
+          </ThemeProvider>
+        </LanguageProvider>
       </body>
     </html>
   )

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   TrendingUp, Users, DollarSign, Package, CheckCircle2,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { useStore } from '@/context/StoreContext'
+import { useLanguage } from '@/context/LanguageContext'
 import AdminSidebar from '@/components/AdminSidebar'
 import axios from 'axios'
 
@@ -73,6 +75,7 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
   const searchParams = useSearchParams()
   const supabase = createClient()
   const { settings } = useStore()
+  const { t, toBengaliDigits, isBangla } = useLanguage()
   
   const [activeTab, setActiveTab] = useState<'orders' | 'messages'>(() => {
     return searchParams.get('tab') === 'messages' ? 'messages' : 'orders'
@@ -610,29 +613,33 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
         <header className="sticky top-0 z-30 flex h-14 sm:h-16 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6 shadow-sm">
           <div className="flex items-center gap-3">
             <h1 className="text-sm sm:text-lg font-bold text-slate-900 truncate">
-              {activeTab === 'orders' ? 'Orders & Fulfillment' : 'Customer Messages'}
+              {activeTab === 'orders' 
+                ? (isBangla ? 'অর্ডার ও ডেলিভারি ব্যবস্থাপনা' : 'Orders & Fulfillment') 
+                : (isBangla ? 'গ্রাহক বার্তা ও জিজ্ঞাসা' : 'Customer Messages')}
             </h1>
             {activeTab === 'orders' && pendingOrdersCount > 0 && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-black bg-amber-500 text-white animate-pulse">
-                {pendingOrdersCount} New
+                {isBangla ? `${toBengaliDigits(pendingOrdersCount)} নতুন` : `${pendingOrdersCount} New`}
               </span>
             )}
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">
-            <button
-              onClick={() => router.push('/')}
+            <Link
+              href="/"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-brand-600 border border-slate-200 hover:border-brand-200 px-3 py-1.5 rounded-lg bg-white shadow-sm transition"
             >
-              <span>View Storefront</span>
+              <span>{isBangla ? 'স্টোরফ্রন্ট দেখুন' : 'View Storefront'}</span>
               <ArrowUpRight className="h-3.5 w-3.5" />
-            </button>
+            </Link>
             <button
               onClick={handleLogout}
               className="flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 border border-red-100 hover:border-red-200 px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 transition"
             >
               <LogOut className="h-3.5 w-3.5" />
-              <span className="hidden xs:inline sm:inline">Logout</span>
+              <span className="hidden xs:inline sm:inline">{t('admin.logout')}</span>
             </button>
           </div>
         </header>
@@ -644,7 +651,7 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
           {searchParams.get('notice') === 'access_restricted' && (
             <div className="flex items-center gap-2 p-3.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl text-xs font-semibold animate-fadeIn">
               <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0" />
-              <span>Access Restricted: Financial statistics, store settings, and staff management are only accessible to Admins and Shop Owners.</span>
+              <span>{isBangla ? 'অনুমতি নেই: আর্থিক পরিসংখ্যান, স্টোর সেটিংস ও কর্মী ব্যবস্থাপনা কেবল অ্যাডমিন এবং ওনারদের জন্য উন্মুক্ত।' : 'Access Restricted: Financial statistics, store settings, and staff management are only accessible to Admins and Shop Owners.'}</span>
             </div>
           )}
 
@@ -656,8 +663,8 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
                 
                 <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase">Paid Sales</p>
-                    <p className="text-lg sm:text-2xl font-black text-slate-900 mt-0.5 sm:mt-1">{totalSalesCount}</p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase">{isBangla ? 'পেইড সেলস' : 'Paid Sales'}</p>
+                    <p className="text-lg sm:text-2xl font-black text-slate-900 mt-0.5 sm:mt-1">{isBangla ? toBengaliDigits(totalSalesCount) : totalSalesCount}</p>
                   </div>
                   <div className="rounded-xl bg-brand-50 p-2 sm:p-3 text-brand-600">
                     <Package className="h-4 w-4 sm:h-6 sm:w-6" />
@@ -666,8 +673,8 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
 
                 <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase">Total Revenue</p>
-                    <p className="text-lg sm:text-2xl font-black text-slate-900 mt-0.5 sm:mt-1">৳{totalRevenue.toLocaleString()}</p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase">{isBangla ? 'মোট আয়' : 'Total Revenue'}</p>
+                    <p className="text-lg sm:text-2xl font-black text-slate-900 mt-0.5 sm:mt-1">৳{isBangla ? toBengaliDigits(totalRevenue.toLocaleString()) : totalRevenue.toLocaleString()}</p>
                   </div>
                   <div className="rounded-xl bg-emerald-50 p-2 sm:p-3 text-emerald-600">
                     <DollarSign className="h-4 w-4 sm:h-6 sm:w-6" />
@@ -676,8 +683,8 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
 
                 <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase">Total Orders</p>
-                    <p className="text-lg sm:text-2xl font-black text-slate-900 mt-0.5 sm:mt-1">{orders.length}</p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase">{isBangla ? 'মোট অর্ডার' : 'Total Orders'}</p>
+                    <p className="text-lg sm:text-2xl font-black text-slate-900 mt-0.5 sm:mt-1">{isBangla ? toBengaliDigits(orders.length) : orders.length}</p>
                   </div>
                   <div className="rounded-xl bg-blue-50 p-2 sm:p-3 text-blue-600">
                     <TrendingUp className="h-4 w-4 sm:h-6 sm:w-6" />
@@ -686,8 +693,8 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
 
                 <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase">Pending Review</p>
-                    <p className="text-lg sm:text-2xl font-black text-amber-600 mt-0.5 sm:mt-1">{pendingOrdersCount}</p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase">{isBangla ? 'পেন্ডিং অর্ডার' : 'Pending Review'}</p>
+                    <p className="text-lg sm:text-2xl font-black text-amber-600 mt-0.5 sm:mt-1">{isBangla ? toBengaliDigits(pendingOrdersCount) : pendingOrdersCount}</p>
                   </div>
                   <div className="rounded-xl bg-amber-50 p-2 sm:p-3 text-amber-600">
                     <Clock className="h-4 w-4 sm:h-6 sm:w-6" />
@@ -705,7 +712,7 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="Search by ID, name, phone, status..."
+                      placeholder={isBangla ? 'আইডি, নাম, ফোন বা স্ট্যাটাস দিয়ে খুঁজুন...' : 'Search by ID, name, phone, status...'}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
@@ -719,15 +726,17 @@ export default function AdminDashboardClient({ initialOrders }: DashboardProps) 
                         onClick={() => handleSyncCourierStatus()}
                         disabled={syncingCourier === 'bulk'}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition disabled:opacity-50 border border-slate-200/80"
-                        title="Check live delivery & return statuses from Steadfast & Pathao APIs"
+                        title={isBangla ? 'কুরিয়ার এপিআই থেকে ডেলিভারি তথ্য সিঙ্ক করুন' : 'Check live delivery & return statuses from Steadfast & Pathao APIs'}
                       >
                         <RefreshCw className={`h-3.5 w-3.5 ${syncingCourier === 'bulk' ? 'animate-spin text-brand-600' : 'text-slate-500'}`} />
-                        <span>{syncingCourier === 'bulk' ? 'Syncing...' : 'Sync Couriers'}</span>
+                        <span>{syncingCourier === 'bulk' ? (isBangla ? 'সিঙ্ক হচ্ছে...' : 'Syncing...') : (isBangla ? 'কুরিয়ার সিঙ্ক' : 'Sync Couriers')}</span>
                       </button>
                     )}
 
                     <span className="text-xs font-bold text-slate-500">
-                      Showing {sortedOrders.length} of {orders.length} orders
+                      {isBangla 
+                        ? `${toBengaliDigits(orders.length)} টির মধ্যে ${toBengaliDigits(sortedOrders.length)} টি অর্ডার` 
+                        : `Showing ${sortedOrders.length} of ${orders.length} orders`}
                     </span>
                   </div>
                 </div>

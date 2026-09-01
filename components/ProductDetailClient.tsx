@@ -10,6 +10,7 @@ import { useCart } from '@/context/CartContext'
 import { useStore } from '@/context/StoreContext'
 import { parseProductVariations, VariationOption } from '@/components/AdminProductsClient'
 import ProductCard from '@/components/ProductCard'
+import { useLanguage } from '@/context/LanguageContext'
 
 interface Product {
   id: string
@@ -42,6 +43,7 @@ interface ProductDetailClientProps {
 export default function ProductDetailClient({ product, categories, relatedProducts = [] }: ProductDetailClientProps) {
   const { addToCart } = useCart()
   const { settings } = useStore()
+  const { t, toBengaliDigits, isBangla } = useLanguage()
   
   const parsedOptions: VariationOption[] = parseProductVariations(product.variations, product.stock)
   
@@ -245,13 +247,14 @@ export default function ProductDetailClient({ product, categories, relatedProduc
             )}
 
             {/* Dynamic Variations Selectors */}
+            {/* Dynamic Variations Selectors */}
             {parsedOptions.length > 0 && (
               <div className="space-y-5 pt-2">
                 {parsedOptions.map((opt) => (
                   <div key={opt.name} className="space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        Select {opt.name}:
+                        {isBangla ? `${opt.name} নির্বাচন করুন:` : `Select ${opt.name}:`}
                       </label>
                       {selectedVariations[opt.name] && (
                         <span className="text-xs font-bold text-brand-600">
@@ -285,7 +288,7 @@ export default function ProductDetailClient({ product, categories, relatedProduc
                             <span>{val.label}</span>
                             {isSoldOut && (
                               <span className="text-[9px] bg-slate-200 text-slate-500 px-1 py-0.2 rounded uppercase">
-                                Sold Out
+                                {t('product.out_of_stock')}
                               </span>
                             )}
                           </button>
@@ -304,14 +307,18 @@ export default function ProductDetailClient({ product, categories, relatedProduc
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-50 text-brand-600">
                     <Check className="h-4 w-4" />
                   </span>
-                  <span className="text-brand-700 font-bold">{currentStock} units available in stock</span>
+                  <span className="text-brand-700 font-bold">
+                    {isBangla ? `${toBengaliDigits(currentStock)} টি পণ্য স্টকে উপলব্ধ রয়েছে` : `${currentStock} units available in stock`}
+                  </span>
                 </>
               ) : (
                 <>
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-50 text-red-600">
                     <AlertCircle className="h-4 w-4" />
                   </span>
-                  <span className="text-red-700 font-bold">This option is currently out of stock</span>
+                  <span className="text-red-700 font-bold">
+                    {isBangla ? 'এই অপশনটি বর্তমানে স্টক শেষ' : 'This option is currently out of stock'}
+                  </span>
                 </>
               )}
             </div>
@@ -328,7 +335,9 @@ export default function ProductDetailClient({ product, categories, relatedProduc
                   >
                     -
                   </button>
-                  <span className="text-sm font-bold text-slate-900">{quantity}</span>
+                  <span className="text-sm font-bold text-slate-900">
+                    {isBangla ? toBengaliDigits(quantity) : quantity}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setQuantity(Math.min(currentStock, quantity + 1))}
@@ -345,7 +354,7 @@ export default function ProductDetailClient({ product, categories, relatedProduc
                   className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-base font-bold text-white shadow-lg hover:bg-brand-500 transition-all duration-200 h-12"
                 >
                   <ShoppingBag className="h-5 w-5" />
-                  Add to Shopping Cart
+                  {t('product.add_to_cart')}
                 </button>
               </div>
             )}
@@ -354,17 +363,18 @@ export default function ProductDetailClient({ product, categories, relatedProduc
             <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4 mt-6 text-xs text-slate-700 space-y-1.5">
               <div className="flex items-center gap-2 font-bold text-slate-900">
                 <Truck className="h-4 w-4 text-brand-600" />
-                <span>Nationwide Express Doorstep Delivery</span>
+                <span>{t('hero.fast_delivery')}</span>
               </div>
               <p className="leading-relaxed text-slate-500">
-                Fast and reliable doorstep delivery across Bangladesh. 
-                Delivery charge is ৳{settings.delivery_charge_inside_dhaka} inside Dhaka, and ৳{settings.delivery_charge_outside_dhaka} outside Dhaka.
+                {isBangla
+                  ? `সারা বাংলাদেশে দ্রুত ও নিরাপদ হোম ডেলিভারি। ডেলিভারি চার্জ ঢাকার ভিতরে ৳${toBengaliDigits(settings.delivery_charge_inside_dhaka || 0)} এবং ঢাকার বাইরে ৳${toBengaliDigits(settings.delivery_charge_outside_dhaka || 0)}।`
+                  : `Fast and reliable doorstep delivery across Bangladesh. Delivery charge is ৳${settings.delivery_charge_inside_dhaka} inside Dhaka, and ৳${settings.delivery_charge_outside_dhaka} outside Dhaka.`}
               </p>
             </div>
 
             <div className="pt-4">
               <Link href="/" className="text-xs font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1">
-                <ArrowLeft className="h-4 w-4" /> Back to Catalog
+                <ArrowLeft className="h-4 w-4" /> {t('common.back')}
               </Link>
             </div>
 
@@ -375,7 +385,7 @@ export default function ProductDetailClient({ product, categories, relatedProduc
         {relatedProducts.length > 0 && (
           <div className="mt-14 sm:mt-20 pt-8 sm:pt-12 border-t border-slate-200 space-y-5">
             <div>
-              <h2 className="text-xl sm:text-2xl font-black text-slate-950">You May Also Like</h2>
+              <h2 className="text-xl sm:text-2xl font-black text-slate-950">{t('product.related_products')}</h2>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import { useLanguage } from '@/context/LanguageContext'
 import { StoreSettings } from '@/utils/settings'
 import { formatExternalUrl } from '@/utils/url'
 import { THEME_PALETTES } from '@/utils/theme'
@@ -25,6 +26,7 @@ interface AdminSettingsClientProps {
 export default function AdminSettingsClient({ initialSettings }: AdminSettingsClientProps) {
   const router = useRouter()
   const supabase = createClient()
+  const { t, isBangla } = useLanguage()
 
   const [settings, setSettings] = useState<StoreSettings>(initialSettings)
   const [activeTab, setActiveTab] = useState<'branding' | 'hero' | 'collections' | 'payment' | 'shipping' | 'tracking' | 'about'>('branding')

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { useStore } from '@/context/StoreContext'
+import { useLanguage } from '@/context/LanguageContext'
 import ImageUploader from '@/components/ImageUploader'
 import AdminSidebar from '@/components/AdminSidebar'
 import RichTextEditor from '@/components/RichTextEditor'
@@ -105,6 +106,7 @@ export default function AdminProductsClient({ initialProducts, initialCategories
   const router = useRouter()
   const supabase = createClient()
   const { settings } = useStore()
+  const { t, toBengaliDigits, isBangla } = useLanguage()
 
   const [products, setProducts] = useState<Product[]>(initialProducts)
   const [categories] = useState<Category[]>(initialCategories)
