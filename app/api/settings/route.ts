@@ -110,25 +110,60 @@ export async function PUT(request: NextRequest) {
 
     let savedData
     if (existingRow?.id) {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('store_settings')
         .update(updatedPayload)
         .eq('id', existingRow.id)
         .select()
-        .single()
-      if (error) throw error
-      savedData = data
+        .maybeSingle()
+
+      // If schema cache lacks newly added columns (e.g. resend_from_email before SQL migration is run)
+      if (error && (error.message?.includes('schema cache') || error.code === 'PGRST204')) {
+        const fallbackPayload: Record<string, any> = { ...updatedPayload }
+        delete fallbackPayload.resend_from_email
+        const retry = await supabase
+          .from('store_settings')
+          .update(fallbackPayload)
+          .eq('id', existingRow.id)
+          .select()
+          .maybeSingle()
+
+        if (retry.error) throw retry.error
+        data = retry.data
+      } else if (error) {
+        throw error
+      }
+
+      savedData = data || updatedPayload
     } else {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('store_settings')
         .insert({
           id: '00000000-0000-0000-0000-000000000001',
           ...updatedPayload
         })
         .select()
-        .single()
-      if (error) throw error
-      savedData = data
+        .maybeSingle()
+
+      if (error && (error.message?.includes('schema cache') || error.code === 'PGRST204')) {
+        const fallbackPayload: Record<string, any> = { ...updatedPayload }
+        delete fallbackPayload.resend_from_email
+        const retry = await supabase
+          .from('store_settings')
+          .insert({
+            id: '00000000-0000-0000-0000-000000000001',
+            ...fallbackPayload
+          })
+          .select()
+          .maybeSingle()
+
+        if (retry.error) throw retry.error
+        data = retry.data
+      } else if (error) {
+        throw error
+      }
+
+      savedData = data || updatedPayload
     }
 
     // Clear server in-memory cache
