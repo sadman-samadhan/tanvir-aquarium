@@ -28,6 +28,10 @@ export interface StoreSettings {
   // Email Integration (Resend)
   resend_api_key: string
   resend_from_email: string
+  email_invoice_enabled: boolean
+  daily_digest_enabled: boolean
+  daily_digest_time: string
+  daily_digest_email: string
   // bKash Credentials
   bkash_api_url: string
   bkash_app_key: string
@@ -154,6 +158,10 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   bkash_personal_qr_url: '',
   resend_api_key: process.env.RESEND_API_KEY || '',
   resend_from_email: process.env.RESEND_FROM_EMAIL || '',
+  email_invoice_enabled: true,
+  daily_digest_enabled: false,
+  daily_digest_time: '20:00',
+  daily_digest_email: '',
   bkash_api_url: process.env.BKASH_API_URL || 'https://tokenized.sandbox.bka.sh/v1.2.0-beta',
   bkash_app_key: process.env.BKASH_APP_KEY || '',
   bkash_app_secret: process.env.BKASH_APP_SECRET || '',
@@ -236,6 +244,10 @@ export async function getStoreSettings(forceFresh = false): Promise<StoreSetting
       bkash_personal_qr_url: data.bkash_personal_qr_url || '',
       resend_api_key: data.resend_api_key || DEFAULT_SETTINGS.resend_api_key,
       resend_from_email: data.resend_from_email || DEFAULT_SETTINGS.resend_from_email,
+      email_invoice_enabled: data.email_invoice_enabled !== undefined ? Boolean(data.email_invoice_enabled) : DEFAULT_SETTINGS.email_invoice_enabled,
+      daily_digest_enabled: data.daily_digest_enabled !== undefined ? Boolean(data.daily_digest_enabled) : DEFAULT_SETTINGS.daily_digest_enabled,
+      daily_digest_time: data.daily_digest_time || DEFAULT_SETTINGS.daily_digest_time,
+      daily_digest_email: data.daily_digest_email || DEFAULT_SETTINGS.daily_digest_email,
       pathao_enabled: data.pathao_enabled !== undefined ? Boolean(data.pathao_enabled) : DEFAULT_SETTINGS.pathao_enabled,
       steadfast_enabled: data.steadfast_enabled !== undefined ? Boolean(data.steadfast_enabled) : DEFAULT_SETTINGS.steadfast_enabled,
       store_city_name: data.store_city_name || DEFAULT_SETTINGS.store_city_name,
