@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS public.categories (
     description TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES public.categories(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_categories_parent_id ON public.categories(parent_id);
 
 -- 3. CREATE PRODUCTS TABLE (With buying_price / cost tracking)
@@ -38,12 +39,20 @@ CREATE TABLE IF NOT EXISTS public.products (
     is_hidden BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS short_description VARCHAR(255) DEFAULT '';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS buying_price NUMERIC(10, 2) DEFAULT 0.00;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_best_seller BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_trending BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS old_price NUMERIC(10, 2) DEFAULT 0.00;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '{"options": []}'::JSONB;
 CREATE INDEX IF NOT EXISTS idx_products_category_id ON public.products(category_id);
 CREATE INDEX IF NOT EXISTS idx_products_slug ON public.products(slug);
 
 -- 4. CREATE ORDERS TABLE
 CREATE TABLE IF NOT EXISTS public.orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID DEFAULT NULL, -- Optional user ID (guest checkout or authenticated customer)
     customer_name VARCHAR(255) NOT NULL,
     customer_phone VARCHAR(50) NOT NULL,
     customer_email VARCHAR(255),
@@ -52,6 +61,9 @@ CREATE TABLE IF NOT EXISTS public.orders (
     city_id INT DEFAULT 0,
     zone_id INT DEFAULT 0,
     area_id INT DEFAULT 0,
+    city_name VARCHAR(100) DEFAULT '',
+    zone_name VARCHAR(100) DEFAULT '',
+    area_name VARCHAR(100) DEFAULT '',
     delivery_charge NUMERIC(10, 2) NOT NULL DEFAULT 60.00,
     total_price NUMERIC(10, 2) NOT NULL,
     payment_method VARCHAR(50) NOT NULL DEFAULT 'COD',
@@ -64,8 +76,18 @@ CREATE TABLE IF NOT EXISTS public.orders (
     steadfast_tracking_code VARCHAR(255),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS user_id UUID DEFAULT NULL;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS customer_id UUID DEFAULT NULL;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS promo_code_id UUID DEFAULT NULL;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS promo_code VARCHAR(100) DEFAULT '';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10, 2) DEFAULT 0.00;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS city_name VARCHAR(100) DEFAULT '';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS zone_name VARCHAR(100) DEFAULT '';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS area_name VARCHAR(100) DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON public.orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_customer_phone ON public.orders(customer_phone);
+CREATE INDEX IF NOT EXISTS idx_orders_user_id ON public.orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON public.orders(customer_id);
 
 -- 5. CREATE ORDER ITEMS TABLE
 CREATE TABLE IF NOT EXISTS public.order_items (
@@ -163,8 +185,19 @@ CREATE TABLE IF NOT EXISTS public.store_settings (
     show_trending BOOLEAN DEFAULT TRUE,
     auto_best_seller BOOLEAN DEFAULT TRUE,
     auto_trending BOOLEAN DEFAULT TRUE,
+    -- bKash Personal & Email Integration
+    bkash_personal_enabled BOOLEAN DEFAULT FALSE,
+    bkash_personal_number VARCHAR(50) DEFAULT '',
+    bkash_personal_name VARCHAR(255) DEFAULT '',
+    bkash_personal_qr_url TEXT DEFAULT '',
+    resend_api_key VARCHAR(255) DEFAULT '',
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.store_settings ADD COLUMN IF NOT EXISTS bkash_personal_enabled BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.store_settings ADD COLUMN IF NOT EXISTS bkash_personal_number VARCHAR(50) DEFAULT '';
+ALTER TABLE public.store_settings ADD COLUMN IF NOT EXISTS bkash_personal_name VARCHAR(255) DEFAULT '';
+ALTER TABLE public.store_settings ADD COLUMN IF NOT EXISTS bkash_personal_qr_url TEXT DEFAULT '';
+ALTER TABLE public.store_settings ADD COLUMN IF NOT EXISTS resend_api_key VARCHAR(255) DEFAULT '';
 
 -- Seed Initial Default Store Settings Row
 INSERT INTO public.store_settings (
@@ -195,7 +228,7 @@ INSERT INTO public.store_settings (
 -- 8. CREATE STAFF MEMBERS & ROLE-BASED ACCESS CONTROL (RBAC)
 CREATE TABLE IF NOT EXISTS public.staff_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id UUID DEFAULT NULL, -- Linked automatically upon login
     email VARCHAR(255) NOT NULL UNIQUE,
     full_name VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL DEFAULT 'staff', -- 'admin', 'shop_owner', 'staff'
@@ -204,6 +237,7 @@ CREATE TABLE IF NOT EXISTS public.staff_members (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.staff_members DROP CONSTRAINT IF EXISTS staff_members_user_id_fkey;
 CREATE INDEX IF NOT EXISTS idx_staff_members_email ON public.staff_members(email);
 CREATE INDEX IF NOT EXISTS idx_staff_members_user_id ON public.staff_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_staff_members_role ON public.staff_members(role);
@@ -213,96 +247,186 @@ DO $$
 DECLARE
     new_user_id UUID := gen_random_uuid();
 BEGIN
-    -- Check if user already exists in auth.users
-    IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'sakib.samadhan@gmail.com') THEN
-        INSERT INTO auth.users (
-            instance_id,
-            id,
-            aud,
-            role,
-            email,
-            encrypted_password,
-            email_confirmed_at,
-            recovery_sent_at,
-            last_sign_in_at,
-            raw_app_meta_data,
-            raw_user_meta_data,
-            created_at,
-            updated_at,
-            confirmation_token,
-            email_change,
-            email_change_token_new,
-            recovery_token
-        ) VALUES (
-            '00000000-0000-0000-0000-000000000000',
-            new_user_id,
-            'authenticated',
-            'authenticated',
-            'sakib.samadhan@gmail.com',
-            crypt('Sakib@9700', gen_salt('bf')),
-            NOW(),
-            NOW(),
-            NOW(),
-            '{"provider":"email","providers":["email"]}'::jsonb,
-            '{"full_name":"Sakib Samadhan"}'::jsonb,
-            NOW(),
-            NOW(),
-            '',
-            '',
-            '',
-            ''
-        );
+    BEGIN
+        -- Check if user already exists in auth.users
+        IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'sakib.samadhan@gmail.com') THEN
+            INSERT INTO auth.users (
+                instance_id,
+                id,
+                aud,
+                role,
+                email,
+                encrypted_password,
+                email_confirmed_at,
+                recovery_sent_at,
+                last_sign_in_at,
+                raw_app_meta_data,
+                raw_user_meta_data,
+                created_at,
+                updated_at,
+                confirmation_token,
+                email_change,
+                email_change_token_new,
+                recovery_token
+            ) VALUES (
+                '00000000-0000-0000-0000-000000000000',
+                new_user_id,
+                'authenticated',
+                'authenticated',
+                'sakib.samadhan@gmail.com',
+                crypt('Sakib@9700', gen_salt('bf')),
+                NOW(),
+                NOW(),
+                NOW(),
+                '{"provider":"email","providers":["email"]}'::jsonb,
+                '{"full_name":"Sakib Samadhan","role":"shop_owner"}'::jsonb,
+                NOW(),
+                NOW(),
+                '',
+                '',
+                '',
+                ''
+            );
 
-        -- Insert identity record (REQUIRED by Supabase GoTrue Auth)
-        INSERT INTO auth.identities (
-            id,
-            user_id,
-            identity_data,
-            provider,
-            provider_id,
-            last_sign_in_at,
-            created_at,
-            updated_at
-        ) VALUES (
-            new_user_id,
-            new_user_id,
-            format('{"sub":"%s","email":"%s"}', new_user_id, 'sakib.samadhan@gmail.com')::jsonb,
-            'email',
-            new_user_id::text,
-            NOW(),
-            NOW(),
-            NOW()
-        );
-    ELSE
-        -- Update password if user already exists
-        UPDATE auth.users
-        SET encrypted_password = crypt('Sakib@9700', gen_salt('bf')),
-            email_confirmed_at = COALESCE(email_confirmed_at, NOW()),
-            updated_at = NOW()
-        WHERE email = 'sakib.samadhan@gmail.com';
-    END IF;
+            -- Insert identity record (REQUIRED by Supabase GoTrue Auth)
+            INSERT INTO auth.identities (
+                id,
+                user_id,
+                identity_data,
+                provider,
+                provider_id,
+                last_sign_in_at,
+                created_at,
+                updated_at
+            ) VALUES (
+                new_user_id,
+                new_user_id,
+                format('{"sub":"%s","email":"%s"}', new_user_id, 'sakib.samadhan@gmail.com')::jsonb,
+                'email',
+                new_user_id::text,
+                NOW(),
+                NOW(),
+                NOW()
+            );
+        ELSE
+            -- Update password if user already exists
+            UPDATE auth.users
+            SET encrypted_password = crypt('Sakib@9700', gen_salt('bf')),
+                email_confirmed_at = COALESCE(email_confirmed_at, NOW()),
+                raw_user_meta_data = jsonb_set(COALESCE(raw_user_meta_data, '{}'::jsonb), '{role}', '"shop_owner"'),
+                updated_at = NOW()
+            WHERE email = 'sakib.samadhan@gmail.com';
+        END IF;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Auth user direct creation notice (can create via Supabase Auth UI if skipped): %', SQLERRM;
+    END;
 
     -- Upsert in staff_members table
-    INSERT INTO public.staff_members (
-        user_id,
-        email,
-        full_name,
-        role,
-        status
-    )
-    SELECT
-        id,
-        'sakib.samadhan@gmail.com',
-        'Sakib Samadhan',
-        'shop_owner',
-        'active'
-    FROM auth.users
-    WHERE email = 'sakib.samadhan@gmail.com'
-    ON CONFLICT (email) DO UPDATE
-    SET role = 'shop_owner', status = 'active';
+    BEGIN
+        INSERT INTO public.staff_members (
+            user_id,
+            email,
+            full_name,
+            role,
+            status
+        )
+        SELECT
+            id,
+            'sakib.samadhan@gmail.com',
+            'Sakib Samadhan',
+            'shop_owner',
+            'active'
+        FROM auth.users
+        WHERE email = 'sakib.samadhan@gmail.com'
+        ON CONFLICT (email) DO UPDATE
+        SET role = 'shop_owner', status = 'active';
+    EXCEPTION WHEN OTHERS THEN
+        INSERT INTO public.staff_members (
+            email,
+            full_name,
+            role,
+            status
+        ) VALUES (
+            'sakib.samadhan@gmail.com',
+            'Sakib Samadhan',
+            'shop_owner',
+            'active'
+        )
+        ON CONFLICT (email) DO UPDATE
+        SET role = 'shop_owner', status = 'active';
+    END;
 END $$;
 
--- 10. ENABLE ROW LEVEL SECURITY (RLS) POLICIES
+-- 10. CREATE CUSTOMERS, WISHLISTS, PROMOTIONS & PROMO_CODES TABLES
+CREATE TABLE IF NOT EXISTS public.customers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID UNIQUE,
+    full_name VARCHAR(255) NOT NULL,
+    phone VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    avatar_url TEXT DEFAULT '',
+    address TEXT DEFAULT '',
+    city_id INT DEFAULT 0,
+    zone_id INT DEFAULT 0,
+    area_id INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS address TEXT DEFAULT '';
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS city_id INT DEFAULT 0;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS zone_id INT DEFAULT 0;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS area_id INT DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS idx_customers_phone ON public.customers(phone);
+CREATE INDEX IF NOT EXISTS idx_customers_email ON public.customers(email);
+CREATE INDEX IF NOT EXISTS idx_customers_user_id ON public.customers(user_id);
+
+CREATE TABLE IF NOT EXISTS public.wishlists (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(customer_id, product_id)
+);
+CREATE INDEX IF NOT EXISTS idx_wishlists_customer_id ON public.wishlists(customer_id);
+CREATE INDEX IF NOT EXISTS idx_wishlists_product_id ON public.wishlists(product_id);
+
+CREATE TABLE IF NOT EXISTS public.promotions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    type VARCHAR(50) NOT NULL,
+    title VARCHAR(255) DEFAULT '',
+    message TEXT DEFAULT '',
+    image_url TEXT DEFAULT '',
+    link_url TEXT DEFAULT '',
+    is_active BOOLEAN DEFAULT TRUE,
+    start_date TIMESTAMPTZ DEFAULT NOW(),
+    end_date TIMESTAMPTZ DEFAULT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_promotions_type ON public.promotions(type);
+CREATE INDEX IF NOT EXISTS idx_promotions_is_active ON public.promotions(is_active);
+
+CREATE TABLE IF NOT EXISTS public.promo_codes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code VARCHAR(100) NOT NULL UNIQUE,
+    discount_type VARCHAR(50) NOT NULL,
+    discount_value NUMERIC(10,2) NOT NULL DEFAULT 0,
+    min_order_amount NUMERIC(10,2) DEFAULT 0,
+    max_discount NUMERIC(10,2) DEFAULT 0,
+    usage_limit INT DEFAULT 0,
+    usage_count INT DEFAULT 0,
+    included_product_ids UUID[] DEFAULT '{}',
+    excluded_product_ids UUID[] DEFAULT '{}',
+    is_active BOOLEAN DEFAULT TRUE,
+    start_date TIMESTAMPTZ DEFAULT NOW(),
+    end_date TIMESTAMPTZ DEFAULT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_promo_codes_code ON public.promo_codes(code);
+CREATE INDEX IF NOT EXISTS idx_promo_codes_is_active ON public.promo_codes(is_active);
+
+-- 11. ENABLE ROW LEVEL SECURITY (RLS) POLICIES
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
@@ -310,38 +434,88 @@ ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.contact_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.staff_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wishlists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.promotions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.promo_codes ENABLE ROW LEVEL SECURITY;
 
 -- Categories RLS
+DROP POLICY IF EXISTS "Allow public read categories" ON public.categories;
+DROP POLICY IF EXISTS "Allow admin write categories" ON public.categories;
 CREATE POLICY "Allow public read categories" ON public.categories FOR SELECT USING (true);
 CREATE POLICY "Allow admin write categories" ON public.categories FOR ALL TO authenticated USING (true);
 
 -- Products RLS
+DROP POLICY IF EXISTS "Allow public read products" ON public.products;
+DROP POLICY IF EXISTS "Allow admin write products" ON public.products;
 CREATE POLICY "Allow public read products" ON public.products FOR SELECT USING (true);
 CREATE POLICY "Allow admin write products" ON public.products FOR ALL TO authenticated USING (true);
 
 -- Orders RLS
+DROP POLICY IF EXISTS "Allow public insert orders" ON public.orders;
+DROP POLICY IF EXISTS "Allow users and admin read orders" ON public.orders;
+DROP POLICY IF EXISTS "Allow admin manage orders" ON public.orders;
 CREATE POLICY "Allow public insert orders" ON public.orders FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow users and admin read orders" ON public.orders FOR SELECT USING (true);
 CREATE POLICY "Allow admin manage orders" ON public.orders FOR ALL TO authenticated USING (true);
 
 -- Order Items RLS
+DROP POLICY IF EXISTS "Allow public insert order items" ON public.order_items;
+DROP POLICY IF EXISTS "Allow public read order items" ON public.order_items;
+DROP POLICY IF EXISTS "Allow admin manage order items" ON public.order_items;
 CREATE POLICY "Allow public insert order items" ON public.order_items FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow public read order items" ON public.order_items FOR SELECT USING (true);
 CREATE POLICY "Allow admin manage order items" ON public.order_items FOR ALL TO authenticated USING (true);
 
 -- Contact Messages RLS
+DROP POLICY IF EXISTS "Allow public insert contact messages" ON public.contact_messages;
+DROP POLICY IF EXISTS "Allow admin manage contact messages" ON public.contact_messages;
 CREATE POLICY "Allow public insert contact messages" ON public.contact_messages FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow admin manage contact messages" ON public.contact_messages FOR ALL TO authenticated USING (true);
 
 -- Store Settings RLS
+DROP POLICY IF EXISTS "Allow public read settings" ON public.store_settings;
+DROP POLICY IF EXISTS "Allow admin manage settings" ON public.store_settings;
 CREATE POLICY "Allow public read settings" ON public.store_settings FOR SELECT USING (true);
 CREATE POLICY "Allow admin manage settings" ON public.store_settings FOR ALL TO authenticated USING (true);
 
 -- Staff Members RLS
+DROP POLICY IF EXISTS "Allow authenticated read staff" ON public.staff_members;
+DROP POLICY IF EXISTS "Allow admin manage staff" ON public.staff_members;
 CREATE POLICY "Allow authenticated read staff" ON public.staff_members FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Allow admin manage staff" ON public.staff_members FOR ALL TO authenticated USING (true);
 
--- 11. RPC FUNCTIONS TO SAFELY DECREMENT & INCREMENT PRODUCT STOCK
+-- Customers RLS
+DROP POLICY IF EXISTS "Allow public read customers" ON public.customers;
+DROP POLICY IF EXISTS "Allow public insert customers" ON public.customers;
+DROP POLICY IF EXISTS "Allow authenticated manage own customer" ON public.customers;
+DROP POLICY IF EXISTS "Allow admin manage all customers" ON public.customers;
+CREATE POLICY "Allow public read customers" ON public.customers FOR SELECT USING (true);
+CREATE POLICY "Allow public insert customers" ON public.customers FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow authenticated manage own customer" ON public.customers FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "Allow admin manage all customers" ON public.customers FOR ALL TO authenticated USING (true);
+
+-- Wishlists RLS
+DROP POLICY IF EXISTS "Allow public read wishlists" ON public.wishlists;
+DROP POLICY IF EXISTS "Allow public manage wishlists" ON public.wishlists;
+DROP POLICY IF EXISTS "Allow admin manage wishlists" ON public.wishlists;
+CREATE POLICY "Allow public read wishlists" ON public.wishlists FOR SELECT USING (true);
+CREATE POLICY "Allow public manage wishlists" ON public.wishlists FOR ALL USING (true);
+CREATE POLICY "Allow admin manage wishlists" ON public.wishlists FOR ALL TO authenticated USING (true);
+
+-- Promotions RLS
+DROP POLICY IF EXISTS "Allow public read promotions" ON public.promotions;
+DROP POLICY IF EXISTS "Allow admin manage promotions" ON public.promotions;
+CREATE POLICY "Allow public read promotions" ON public.promotions FOR SELECT USING (true);
+CREATE POLICY "Allow admin manage promotions" ON public.promotions FOR ALL TO authenticated USING (true);
+
+-- Promo Codes RLS
+DROP POLICY IF EXISTS "Allow public read promo codes" ON public.promo_codes;
+DROP POLICY IF EXISTS "Allow admin manage promo codes" ON public.promo_codes;
+CREATE POLICY "Allow public read promo codes" ON public.promo_codes FOR SELECT USING (true);
+CREATE POLICY "Allow admin manage promo codes" ON public.promo_codes FOR ALL TO authenticated USING (true);
+
+-- 12. RPC FUNCTIONS TO SAFELY DECREMENT & INCREMENT PRODUCT STOCK
 CREATE OR REPLACE FUNCTION decrement_product_stock(prod_id UUID, qty INT)
 RETURNS VOID AS $$
 BEGIN
